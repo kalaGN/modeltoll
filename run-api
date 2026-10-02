@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -e
+script_dir=${0:A:h}
+export HF_HOME="$script_dir/.hf-cache"
+export HF_HUB_OFFLINE=1
+export LAYA_DEVICE=${LAYA_DEVICE:-mps}
+cd "$script_dir"
+exec "$script_dir/.venv/bin/python" -m uvicorn api:app --host 127.0.0.1 --port 8000 --workers 1 "$@"

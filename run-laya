@@ -1,0 +1,10 @@
+#!/bin/zsh
+set -e
+
+script_dir=${0:A:h}
+export HF_HOME="$script_dir/.hf-cache"
+
+exec "$script_dir/.venv/bin/python" "$script_dir/.venv/bin/laya" \
+  --model multilingual \
+  --device mps \
+  "$@"

@@ -1,0 +1,12 @@
+.venv/
+.hf-cache/
+.uv-cache/
+.idea/
+__pycache__/
+*.py[cod]
+torchinductor_*/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log

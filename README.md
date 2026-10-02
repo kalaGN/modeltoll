@@ -1,4 +1,7 @@
-# Laya 本地模型 API
+# Laya 模型 API 与 API Key 管理平台
+
+平台需求：[邮箱密码登录、Key 管理、调用统计与 Token 计费](docs/20261002-Laya平台-需求.md)。
+价格为 1 元 / 100 万输入 Token；管理与计费功能尚未实现，下文是现有模型 API 用法。
 
 AI 开发入口：[AGENTS.md](AGENTS.md)；[规则索引](docs/AI_RULES.md)；
 [项目事实与审计](docs/PROJECT_KNOWLEDGE.md)；[Spec 指南](docs/SPEC_GUIDE.md)。

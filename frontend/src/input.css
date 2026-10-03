@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe7fe;
+  --color-brand-200: #c7d9fd;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8;
+  --color-brand-700: #1e40af;
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* 设计稿中的柔和光晕，Tailwind 无对应原子类。 */
+.brand-glow::before,
+.brand-glow::after {
+  content: "";
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(2px);
+}
+.brand-glow::before {
+  width: 620px;
+  height: 620px;
+  right: -220px;
+  top: -180px;
+  background: radial-gradient(circle at 30% 30%, rgb(255 255 255 / 0.85), rgb(191 214 251 / 0.25));
+}
+.brand-glow::after {
+  width: 480px;
+  height: 480px;
+  left: -160px;
+  bottom: -200px;
+  background: radial-gradient(circle at 60% 40%, rgb(255 255 255 / 0.7), rgb(167 199 250 / 0.3));
+}

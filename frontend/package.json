@@ -1,0 +1,15 @@
+{
+  "name": "laya-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Laya 平台前端页面，Tailwind CSS 构建后由同源后端提供静态文件",
+  "scripts": {
+    "build": "mkdir -p dist && tailwindcss -i ./src/input.css -o ./dist/app.css --minify && cp src/*.html src/app.js dist/",
+    "watch": "tailwindcss -i ./src/input.css -o ./dist/app.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
+}

@@ -1,17 +1,11 @@
-"""本地 Laya 模型服务，使用单实例和串行推理保护 MPS 内存。"""
+"""推理接口请求契约，字段与语义保持迁移前一致。"""
 
-import logging
-import os
-import threading
-from contextlib import asynccontextmanager
+from __future__ import annotations
+
+import json
 from typing import Any, Literal
 
-from customer_service_test import Router, analyse
-from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-
-logger = logging.getLogger("laya.api")
-inference_lock = threading.Lock()
 
 
 class CustomerServiceRequest(BaseModel):
@@ -56,57 +50,6 @@ class PredictRequest(BaseModel):
 
     @model_validator(mode="after")
     def limit_state(self):
-        import json
-
         if len(json.dumps(self.state, ensure_ascii=False)) > 16000:
             raise ValueError("state 不能超过 16000 字符")
         return self
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    device = os.environ.get("LAYA_DEVICE", "mps")
-    if device not in {"mps", "cpu"}:
-        raise ValueError("LAYA_DEVICE 只支持 mps 或 cpu")
-    router = Router(device=device, default="multilingual", max_loaded=1)
-    router.load("multilingual")
-    app.state.router = router
-    app.state.device = device
-    logger.info("Laya multilingual ready on %s", device)
-    yield
-
-
-app = FastAPI(title="Laya 本地模型 API", version="1.0.0", lifespan=lifespan)
-
-
-@app.get("/health")
-def health(request: Request):
-    return {"status": "ok", "model": "multilingual", "device": request.app.state.device}
-
-
-@app.post("/v1/customer-service/analyze")
-def customer_service(body: CustomerServiceRequest, request: Request):
-    try:
-        with inference_lock:
-            return analyse(body.message, router=request.app.state.router)
-    except Exception:
-        logger.exception("Customer service inference failed")
-        raise HTTPException(status_code=500, detail="模型推理失败，请查看服务日志")
-
-
-@app.post("/v1/predict")
-def predict(body: PredictRequest, request: Request):
-    questions = {
-        key: value.model_dump(exclude_none=True)
-        for key, value in body.questions.items()
-    }
-    try:
-        with inference_lock:
-            return request.app.state.router.predict(
-                body.state, questions, model="multilingual", lang=body.lang
-            )
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        logger.exception("Structured prediction failed")
-        raise HTTPException(status_code=500, detail="模型推理失败，请查看服务日志")

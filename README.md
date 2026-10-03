@@ -1,15 +1,51 @@
 # Laya 模型 API 与 API Key 管理平台
 
 平台需求：[邮箱密码登录、Key 管理、调用统计与 Token 计费](docs/20261002-Laya平台-需求.md)。
-价格为 1 元 / 100 万输入 Token；管理与计费功能尚未实现，下文是现有模型 API 用法。
+价格为 1 元 / 100 万输入 Token。邮箱密码登录与注册、API Key 管理、推理鉴权、
+调用记录、Token 计费与统计页面均已实现；失败与超时调用的计费规则仍待产品确认，
+当前只对成功且产出原生 Token 用量的调用记账。
 
 AI 开发入口：[AGENTS.md](AGENTS.md)；[规则索引](docs/AI_RULES.md)；
 [项目事实与审计](docs/PROJECT_KNOWLEDGE.md)；[Spec 指南](docs/SPEC_GUIDE.md)。
 根目录保留开发入口与使用说明，规则、知识和 Spec 文档归档在 `docs/`。
 
-当前环境为 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0
-（2026-10-02 本机快照）。`requirements-api.txt` 只声明 API 依赖，
-不是完整模型安装清单；没有锁文件、自动化测试套件或构建配置。
+当前环境为 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、
+MySQL 9.6.0、Node 22.22.3（2026-10-02 本机快照）。`requirements-api.txt` 声明 API、
+鉴权与数据库驱动依赖，不是完整模型安装清单，也没有 Python 锁文件；前端有
+`package-lock.json`。项目没有自动化测试套件、Lint 或类型检查配置。
+
+## 目录结构
+
+后端在 `backend/app`（入口 `app.main:app`），前端在 `frontend/`（`src/` 是页面与
+`app.js`，`dist/` 是构建产物，由后端以 `/assets` 同源提供），
+迁移 SQL 在 `backend/migrations/`。根目录 `run-api`、`run-laya` 与
+`customer_service_test.py` 仍是入口脚本。详见
+[任务文档](docs/20261002-Laya平台-任务.md)。
+
+## 前置条件
+
+登录功能需要本机 MySQL。在项目根目录创建 `.env`（已被 Git 忽略）：
+
+```dotenv
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=laya_app
+MYSQL_PASSWORD=<你的密码>
+MYSQL_DATABASE=laya_platform
+```
+
+表结构在服务启动时按 `backend/migrations/` 的 `0001_auth.sql`、`0002_api_keys.sql`、
+`0003_billing.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
+`CREATE`/`INDEX`/`REFERENCES` 与 `ALTER ADD CONSTRAINT` 权限；DDL 与回滚脚本成对提供。
+
+## 构建前端
+
+页面样式使用 Tailwind CSS，需先构建，否则 `/login`、`/keys`、`/usage`、`/billing`
+返回 500 提示未构建：
+
+```bash
+cd frontend && npm install && npm run build   # 产出 frontend/dist/
+```
 
 启动（复用 `.venv` 和 `.hf-cache` 中已安装的模型，默认 MPS）：
 
@@ -25,22 +61,70 @@ CPU 启动：`LAYA_DEVICE=cpu zsh run-api`。使用 `Ctrl+C` 停止。
 接口文档：http://127.0.0.1:8000/docs
 OpenAPI：http://127.0.0.1:8000/openapi.json（可导入 Postman）
 
+## 登录与注册
+
+浏览器访问 http://127.0.0.1:8000/login（未登录时 `/` 自动跳转，登录后落到 `/keys`）。
+管理接口前缀 `/v1/auth`，写操作要求 `X-CSRF-Token` 与 `laya_csrf` Cookie 一致：
+
+```bash
+curl -s -c /tmp/j http://127.0.0.1:8000/login -o /dev/null   # 下发 CSRF Cookie
+CSRF=$(grep laya_csrf /tmp/j | awk '{print $NF}')
+curl -s -b /tmp/j -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"至少 8 位密码"}' \
+  http://127.0.0.1:8000/v1/auth/register
+curl -s -b /tmp/j -c /tmp/j -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"至少 8 位密码"}' \
+  http://127.0.0.1:8000/v1/auth/login
+curl -s -b /tmp/j http://127.0.0.1:8000/v1/auth/me
+curl -s -b /tmp/j -H "X-CSRF-Token: $CSRF" -X POST http://127.0.0.1:8000/v1/auth/logout
+```
+
+密码用 Argon2id 哈希存储，会话只保存 Token 的 SHA-256，有效期 7 天。
+同一邮箱 15 分钟内 5 次密码错误会锁定 15 分钟，返回 429。
+错误邮箱与错误密码返回同一个 401 响应体，不透露账号是否存在。
+
+## API Key 与统计
+
+管理页：http://127.0.0.1:8000/keys、`/usage`、`/billing`（未登录跳转 `/login`）。
+Key 接口前缀 `/v1/api-keys`，同样要求登录会话与 CSRF 令牌；库中只保存 Key 的
+SHA-256，完整密钥只在创建响应里出现一次。
+
+```bash
+curl -s -b /tmp/j -c /tmp/j -H "X-CSRF-Token: $CSRF" -X POST \
+  http://127.0.0.1:8000/v1/api-keys                     # 返回 secret，仅此一次
+curl -s -b /tmp/j http://127.0.0.1:8000/v1/api-keys     # 脱敏列表与数量汇总
+KEY_ID=<上面返回的 id>
+curl -s -b /tmp/j -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"confirm":true}' http://127.0.0.1:8000/v1/api-keys/$KEY_ID/revoke
+curl -s -b /tmp/j 'http://127.0.0.1:8000/v1/usage/summary?from=2026-10-01&to=2026-10-03'
+curl -s -b /tmp/j 'http://127.0.0.1:8000/v1/billing/charges?limit=20'
+```
+
+统计接口按 UTC 半开区间 `[from, to)` 过滤，只返回当前用户名下的数据；明细用
+`cursor` 做 keyset 分页，响应带 `next_cursor`/`has_more`。汇总与明细同源，可逐条对账。
+
 ## 客服分析
+
+推理接口只接受 `Authorization: Bearer <API Key>`，缺失、无效或已撤销返回 401，
+且不会加载模型。登录会话不能代替 Key。
 
 ```bash
 curl http://127.0.0.1:8000/v1/customer-service/analyze \
+  -H "Authorization: Bearer $API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"message":"我被重复扣款了，请马上退款，否则取消服务。"}'
 ```
 
 响应包含 `category`、`category_probability`、`priority`、`needs_human`、
 `recommended_action` 和 `signals`。分类与风险信号来自模型，优先级、
-人工分流和建议动作来自客服脚本中的业务规则。
+人工分流和建议动作来自客服业务规则。响应头 `X-Request-Id` 是本次调用记录的主键，
+与统计明细中的“请求标识”一致。
 
 ## 自定义结构化预测
 
 ```bash
 curl http://127.0.0.1:8000/v1/predict \
+  -H "Authorization: Bearer $API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"state":{"message":"请帮我退款"},"lang":"zh","questions":{"refund_requested":{"type":"noul","instructions":"客户是否要求退款？"}}}'
 ```
@@ -53,6 +137,11 @@ curl http://127.0.0.1:8000/v1/predict \
 
 返回原生 Laya 结果，主要读取 `answers` 和 `routing`。模型固定为 `multilingual`。
 参数校验失败返回 HTTP 422，推理内部错误返回 HTTP 500，具体错误记录在终端。
+
+计费以模型返回的原生 `usage.input_tokens` 为准，金额用 Decimal 按
+`Token ÷ 1,000,000 × ¥1` 计算并保留 6 位小数；每次调用固定当时的价格版本，
+`usage_charges` 对 `call_id` 唯一，避免重复扣费。拿不到用量信息的失败调用标记为
+计费待确认（`billing_status=pending`），其它失败与中断按当前策略标记为不计费。
 
 健康检查：`curl http://127.0.0.1:8000/health`。
 本服务执行分类和评分，不生成聊天回复。

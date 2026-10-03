@@ -2,13 +2,21 @@
 
 ## 项目与事实来源
 
-- 项目目标是 Laya API Key 管理与计费平台；当前仅实现模型 HTTP API 和 CLI。
+- 项目目标是 Laya API Key 管理与计费平台；已实现模型 HTTP API、CLI、邮箱密码登录、
+  API Key 生命周期与 Bearer 推理鉴权、调用记录、Decimal 计费、统计查询和四个页面。
 - 已确认目标见 [平台需求](docs/20261002-Laya平台-需求.md)，不要把待实现功能当现状。
-- 当前环境：Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0。
+- 当前环境：Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、
+  MySQL 9.6.0、Node 22.22.3。
 - 版本是 2026-10-02 的安装快照，非锁定版本；以实际依赖元数据复核。
-- `api.py`：参数模型、HTTP 路由、模型生命周期、推理锁、错误映射。
-- `customer_service_test.py`：客服分析、业务分流规则与 CLI；并非自动化测试。
-- `run-api` / `run-laya`：启动脚本；`requirements-api.txt` 仅声明 API 依赖。
+- `backend/app/`：后端。`main.py` 组装与 lifespan，`api/v1/` 路由，`schemas/` 契约，
+  `services/` 账号/客服规则/模型运行时，`core/` 配置与哈希，`db/` 连接与建表。
+- `backend/migrations/`：可审查 DDL 与回滚，是表结构唯一来源。
+- `frontend/`：Tailwind 页面，`npm run build` 产出 `dist/`，未构建时 `/login` 返回 500。
+- `customer_service_test.py`：客服分析 CLI 入口，业务规则已迁到
+  `backend/app/services/customer_service.py`；并非自动化测试。
+- `run-api` / `run-laya`：启动脚本，`run-api` 以 `PYTHONPATH=backend` 启动 `app.main:app`；
+  `requirements-api.txt` 声明 API、鉴权与数据库驱动依赖。
+- `.env`：本机 MySQL 凭据，已被 Git 忽略；缺失时启动即失败。
 
 ## 渐进加载
 
@@ -43,13 +51,16 @@
 ```bash
 uv pip check --python .venv/bin/python --cache-dir .uv-cache
 zsh -n run-api run-laya
-.venv/bin/python -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ("api.py","customer_service_test.py")]'
-.venv/bin/python -c 'import api; print(api.app.openapi()["paths"].keys())'
+PYTHONPATH=backend .venv/bin/python -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ["customer_service_test.py", *sorted(pathlib.Path("backend").rglob("*.py"))]]'
+PYTHONPATH=backend .venv/bin/python -c 'import app.main as m; print(sorted(m.app.openapi()["paths"].keys()))'
+cd frontend && npm run build && cd ..
 zsh run-api
 .venv/bin/python customer_service_test.py --json "请帮我退款"
 curl http://127.0.0.1:8000/health
 ```
 
-启动和推理不是纯静态检查，按任务需要执行，避免重复启动占用端口。
+启动需要本机 MySQL 运行且根目录存在 `.env`（见 README 前置条件）。
+启动和推理不是纯静态检查，按任务需要执行，避免重复启动占用端口；
+端口被占用时可用 `zsh run-api --port 8010`，不要终止非本次会话启动的进程。
 提交前执行 `git diff --check` 与 `git diff --cached --check`，并审查暂存文件。
 只有用户明确要求时创建 Commit。

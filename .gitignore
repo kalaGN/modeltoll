@@ -10,3 +10,7 @@ torchinductor_*/
 .env.*
 !.env.example
 *.log
+
+# 前端构建链与产物
+node_modules/
+frontend/dist/

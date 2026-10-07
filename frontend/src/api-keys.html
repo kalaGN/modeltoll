@@ -6,79 +6,74 @@
   <title>API Key 管理 · Laya 模型 API 平台</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body class="bg-[#f5f7fa] text-[#111827]" data-page="keys">
-<div class="flex min-h-screen">
-  <aside class="flex w-[260px] shrink-0 flex-col border-r border-[#e5e7eb] bg-white">
-    <div class="flex items-center gap-3 px-6 py-6">
-      <span class="grid h-9 w-9 place-items-center rounded-lg bg-[#2563eb] text-white font-bold">L</span>
-      <span><span class="block text-lg font-semibold">Laya</span>
-      <span class="block text-xs text-[#6b7280]">模型 API 平台</span></span>
-    </div>
-    <nav class="flex-1 space-y-1 px-3">
-      <a href="/keys" class="flex items-center gap-3 rounded-lg bg-[#eff6ff] px-3 py-2 text-sm font-medium text-[#2563eb]">
+<body class="console-page" data-page="keys">
+<a class="skip-link" href="#main-content">跳转到主要内容</a>
+<div class="console-shell">
+  <aside class="console-sidebar">
+    <a href="/keys" class="brand" aria-label="Laya 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M10 1 2 12v11l8 8 8-8V12Z" fill="currentColor"/><path d="M19 21h11v10H19Z" fill="currentColor"/></svg>
+      <span><strong>Laya</strong><small>模型 API 平台</small></span>
+    </a>
+    <nav class="console-nav" aria-label="主要导航">
+      <a href="/keys" class="nav-link is-active" aria-current="page">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></svg>
         API Key 管理</a>
-      <a href="/usage" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[#374151] hover:bg-[#f3f4f6]">
+      <a href="/usage" class="nav-link">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
         调用统计</a>
-      <a href="/billing" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[#374151] hover:bg-[#f3f4f6]">
+      <a href="/billing" class="nav-link">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         费用统计</a>
     </nav>
-    <div class="flex items-center gap-3 border-t border-[#e5e7eb] px-5 py-4 text-sm text-[#374151]">
-      <span class="grid h-8 w-8 place-items-center rounded-full bg-[#eff6ff] text-[#2563eb]">@</span>
+    <div class="account-panel">
+      <span class="account-avatar" aria-hidden="true">@</span>
       <span id="account" class="flex-1 truncate">加载中…</span>
-      <button id="logout" class="text-xs text-[#6b7280] hover:text-[#2563eb]">退出</button>
+      <button id="logout" class="text-xs text-[#62695e] hover:text-[#344b2d]">退出</button>
     </div>
   </aside>
 
-  <div class="flex min-w-0 flex-1 flex-col">
-    <header class="flex h-14 items-center justify-between border-b border-[#e5e7eb] bg-white px-8">
-      <span class="text-[15px] font-semibold">API Key 管理</span>
-      <span class="grid h-8 w-8 place-items-center rounded-full bg-[#eff6ff] text-[#2563eb]">L</span>
-    </header>
+  <div class="console-workspace">
 
-    <main class="mx-auto w-full max-w-[1120px] space-y-6 p-8">
-      <div class="flex items-end justify-between gap-4">
+    <main id="main-content" class="console-main">
+      <div class="page-heading">
         <div>
-          <h1 class="text-[28px] font-bold">API Key 管理</h1>
-          <p class="mt-1 text-sm text-[#6b7280]">管理用于调用 Laya 模型接口的密钥。</p>
+          <h1 class="page-title">API Key 管理</h1>
+          <p class="mt-1 text-sm text-[#62695e]">管理模型接口的访问凭证，让每一次调用有据可查。</p>
         </div>
-        <button id="create" class="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8]">
-          申请 API Key</button>
+        <button id="create" class="button-primary">
+          <span aria-hidden="true">＋</span> 申请 API Key</button>
       </div>
 
-      <div class="flex items-start gap-3 rounded-xl border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-sm text-[#1d4ed8]">
-        <span class="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#2563eb] text-[11px] text-white">i</span>
-        完整密钥仅在创建时展示一次，请妥善保存。
-      </div>
-
-      <div id="error" class="hidden rounded-xl border border-[#fecaca] bg-[#fee2e2] px-4 py-3 text-sm text-[#dc2626]"></div>
-
-      <section class="grid gap-4 sm:grid-cols-3">
-        <div class="flex items-center gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="grid h-10 w-10 place-items-center rounded-full bg-[#eff6ff] text-[#2563eb]">KEY</span>
-          <span><span class="block text-xs text-[#6b7280]">密钥总数</span>
-          <span id="stat-total" class="block text-[28px] font-bold leading-tight">0</span></span>
+      <section class="metric-grid sm:grid-cols-3" aria-label="关键指标">
+        <div class="metric">
+          <span><span class="block text-xs text-[#62695e]">密钥总数</span>
+          <span id="stat-total" class="block text-[28px] font-bold leading-tight">—</span></span>
         </div>
-        <div class="flex items-center gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="grid h-10 w-10 place-items-center rounded-full bg-[#dcfce7] text-[#16a34a]">OK</span>
-          <span><span class="block text-xs text-[#6b7280]">可用密钥</span>
-          <span id="stat-active" class="block text-[28px] font-bold leading-tight text-[#16a34a]">0</span></span>
+        <div class="metric">
+          <span><span class="block text-xs text-[#62695e]">可用密钥</span>
+          <span id="stat-active" class="block text-[28px] font-bold leading-tight text-[#28743e]">—</span></span>
         </div>
-        <div class="flex items-center gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="grid h-10 w-10 place-items-center rounded-full bg-[#fee2e2] text-[#dc2626]">NO</span>
-          <span><span class="block text-xs text-[#6b7280]">已撤销</span>
-          <span id="stat-revoked" class="block text-[28px] font-bold leading-tight text-[#dc2626]">0</span></span>
+        <div class="metric">
+          <span><span class="block text-xs text-[#62695e]">已撤销</span>
+          <span id="stat-revoked" class="block text-[28px] font-bold leading-tight text-[#b42318]">—</span></span>
         </div>
       </section>
 
-      <section class="rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold">我的 API Key</h2>
-        <div class="mt-4 overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-[#f9fafb] text-[13px] text-[#6b7280]">
-              <tr><th class="px-3 py-2 font-medium">密钥标识</th><th class="px-3 py-2 font-medium">状态</th>
+      <div class="safety-notice">
+        <span class="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#344b2d] text-[11px] text-white">i</span>
+        完整密钥仅在创建时展示一次，请妥善保存。
+      </div>
+
+      <div id="error" role="alert" class="hidden rounded-xl border border-[#fecaca] bg-[#fee2e2] px-4 py-3 text-sm text-[#b42318]"></div>
+
+
+      <section class="console-panel">
+        <div class="panel-heading"><h2>我的 API Key</h2></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="明细表，可横向滚动">
+          <table class="records-table">
+            <thead class="bg-[#f5f6f0] text-[13px] text-[#62695e]">
+              <tr><th class="px-3 py-2 font-medium">名称</th><th class="px-3 py-2 font-medium">密钥标识</th>
+              <th class="px-3 py-2 font-medium">状态</th>
               <th class="px-3 py-2 font-medium">创建时间（UTC）</th><th class="px-3 py-2 font-medium">最近使用（UTC）</th>
               <th class="px-3 py-2 font-medium">操作</th></tr>
             </thead>
@@ -87,36 +82,69 @@
         </div>
       </section>
 
-      <section class="rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold">如何调用</h2>
-        <p class="mt-1 text-sm text-[#6b7280]">接入示例，最终调用契约以接口文档为准。</p>
-        <pre id="example" class="mt-4 overflow-x-auto rounded-lg bg-[#f9fafb] p-4 text-xs leading-relaxed text-[#374151]"></pre>
+      <section class="integration-panel">
+        <div class="integration-intro"><h2>如何调用</h2>
+        <p class="mt-1 text-sm text-[#62695e]">接入示例，最终调用契约以接口文档为准。</p>
+        </div><div class="integration-code"><pre id="example" tabindex="0" aria-label="调用示例，可横向滚动">curl -X POST http://127.0.0.1:8000/v1/predict \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"state":{"message":"请帮我退款"},"lang":"zh","questions":{"refund_requested":{"type":"noul","instructions":"客户是否要求退款？"}}}'</pre></div>
       </section>
 
-      <p class="pb-4 text-center text-xs text-[#6b7280]">数据来自服务端真实密钥记录，脱敏标识不可用于认证。</p>
+      <p class="pb-4 text-center text-xs text-[#62695e]">数据来自服务端真实密钥记录，脱敏标识不可用于认证。</p>
     </main>
   </div>
 </div>
 
-<div id="secret-modal" class="fixed inset-0 hidden items-center justify-center bg-black/40 p-6">
-  <div class="w-full max-w-lg rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-lg">
-    <h3 class="text-lg font-semibold">API Key 已创建</h3>
-    <p class="mt-1 text-sm text-[#6b7280]">完整密钥只显示这一次，关闭后无法再次查看。</p>
-    <code id="secret" class="mt-4 block break-all rounded-lg bg-[#f9fafb] p-3 text-xs"></code>
+<div id="create-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="create-title">
+  <div class="w-full max-w-md rounded-xl border border-[#dddfd7] bg-white p-6 shadow-lg">
+    <p id="create-error" role="alert" class="modal-error hidden"></p>
+    <h2 id="create-title" class="text-lg font-semibold">申请 API Key</h2>
+    <label class="mt-4 block text-sm text-[#62695e]" for="key-name">名称（可选，最多 60 字）</label>
+    <input id="key-name" type="text" maxlength="60" placeholder="如：生产后端"
+      class="mt-1.5 w-full rounded-lg border border-[#dddfd7] bg-white px-3 py-2 text-sm outline-none focus:border-[#344b2d]">
+    <p class="mt-2 text-xs text-[#62695e]">名称只用于展示与识别，不参与认证。</p>
     <div class="mt-5 flex justify-end gap-3">
-      <button id="copy" class="rounded-lg border border-[#e5e7eb] px-4 py-2 text-sm hover:bg-[#f9fafb]">复制</button>
-      <button id="close" class="rounded-lg bg-[#2563eb] px-4 py-2 text-sm text-white">我已保存</button>
+      <button id="create-cancel" class="rounded-lg border border-[#dddfd7] px-4 py-2 text-sm hover:bg-[#f5f6f0]">取消</button>
+      <button id="create-confirm" class="button-primary">创建</button>
     </div>
   </div>
 </div>
 
-<div id="revoke-modal" class="fixed inset-0 hidden items-center justify-center bg-black/40 p-6">
-  <div class="w-full max-w-md rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-lg">
-    <h3 class="text-lg font-semibold">确认撤销该密钥？</h3>
-    <p id="revoke-target" class="mt-2 text-sm text-[#6b7280]"></p>
+<div id="secret-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="secret-title">
+  <div class="w-full max-w-lg rounded-xl border border-[#dddfd7] bg-white p-6 shadow-lg">
+    <p id="secret-error" role="alert" class="modal-error hidden"></p>
+    <h2 id="secret-title" class="text-lg font-semibold">API Key 已创建</h2>
+    <p class="mt-1 text-sm text-[#62695e]">完整密钥只显示这一次，关闭后无法再次查看。</p>
+    <code id="secret" class="mt-4 block break-all rounded-lg bg-[#f5f6f0] p-3 text-xs"></code>
     <div class="mt-5 flex justify-end gap-3">
-      <button id="revoke-cancel" class="rounded-lg border border-[#e5e7eb] px-4 py-2 text-sm hover:bg-[#f9fafb]">取消</button>
-      <button id="revoke-confirm" class="rounded-lg bg-[#dc2626] px-4 py-2 text-sm text-white hover:bg-[#b91c1c]">确认撤销</button>
+      <button id="copy" class="rounded-lg border border-[#dddfd7] px-4 py-2 text-sm hover:bg-[#f5f6f0]">复制</button>
+      <button id="close" class="button-primary">我已保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="revoke-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="revoke-title">
+  <div class="w-full max-w-md rounded-xl border border-[#dddfd7] bg-white p-6 shadow-lg">
+    <p id="revoke-error" role="alert" class="modal-error hidden"></p>
+    <h2 id="revoke-title" class="text-lg font-semibold">确认撤销该密钥？</h2>
+    <p id="revoke-target" class="mt-2 text-sm text-[#62695e]"></p>
+    <div class="mt-5 flex justify-end gap-3">
+      <button id="revoke-cancel" class="rounded-lg border border-[#dddfd7] px-4 py-2 text-sm hover:bg-[#f5f6f0]">取消</button>
+      <button id="revoke-confirm" class="rounded-lg bg-[#b42318] px-4 py-2 text-sm text-white hover:bg-[#b91c1c]">确认撤销</button>
+    </div>
+  </div>
+</div>
+
+<div id="delete-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+  <div class="w-full max-w-md rounded-xl border border-[#dddfd7] bg-white p-6 shadow-lg">
+    <p id="delete-error" role="alert" class="modal-error hidden"></p>
+    <h2 id="delete-title" class="text-lg font-semibold">删除已撤销的密钥？</h2>
+    <p id="delete-target" class="mt-2 break-all text-sm text-[#62695e]"></p>
+    <p class="mt-3 text-sm leading-relaxed text-[#62695e]">删除后将从密钥列表移除，无法在页面恢复。历史调用和费用记录仍会保留。</p>
+    <div class="mt-5 flex justify-end gap-3">
+      <button id="delete-cancel" class="rounded-lg border border-[#dddfd7] px-4 py-2 text-sm hover:bg-[#f5f6f0]">取消</button>
+      <button id="delete-confirm" class="rounded-lg bg-[#b42318] px-4 py-2 text-sm text-white hover:bg-[#b91c1c]">确认删除</button>
     </div>
   </div>
 </div>

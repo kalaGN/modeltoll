@@ -12,7 +12,7 @@ AI 开发入口：[AGENTS.md](AGENTS.md)；[规则索引](docs/AI_RULES.md)；
 当前环境为 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、
 MySQL 9.6.0、Node 22.22.3（2026-10-02 本机快照）。`requirements-api.txt` 声明 API、
 鉴权与数据库驱动依赖，不是完整模型安装清单，也没有 Python 锁文件；前端有
-`package-lock.json`。项目没有自动化测试套件、Lint 或类型检查配置。
+`package-lock.json`。密钥删除有标准库 unittest 回归测试（`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`）；未配置 Lint 或类型检查。
 
 ## 目录结构
 
@@ -35,8 +35,8 @@ MYSQL_DATABASE=laya_platform
 ```
 
 表结构在服务启动时按 `backend/migrations/` 的 `0001_auth.sql`、`0002_api_keys.sql`、
-`0003_billing.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
-`CREATE`/`INDEX`/`REFERENCES` 与 `ALTER ADD CONSTRAINT` 权限；DDL 与回滚脚本成对提供。
+`0003_billing.sql`、`0004_api_key_deletion.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
+`CREATE`/`INDEX`/`REFERENCES` 与 `ALTER` 权限；DDL 与回滚脚本成对提供。
 
 ## 构建前端
 
@@ -87,18 +87,22 @@ curl -s -b /tmp/j -H "X-CSRF-Token: $CSRF" -X POST http://127.0.0.1:8000/v1/auth
 
 管理页：http://127.0.0.1:8000/keys、`/usage`、`/billing`（未登录跳转 `/login`）。
 Key 接口前缀 `/v1/api-keys`，同样要求登录会话与 CSRF 令牌；库中只保存 Key 的
-SHA-256，完整密钥只在创建响应里出现一次。
+SHA-256，完整密钥只在创建响应里出现一次。创建时可带可选 `name`（≤60 字，只用于展示
+与识别，不参与认证），列表与创建响应都会回传该名称。
 
 ```bash
-curl -s -b /tmp/j -c /tmp/j -H "X-CSRF-Token: $CSRF" -X POST \
+curl -s -b /tmp/j -c /tmp/j -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
+  -d '{"name":"生产后端"}' \
   http://127.0.0.1:8000/v1/api-keys                     # 返回 secret，仅此一次
-curl -s -b /tmp/j http://127.0.0.1:8000/v1/api-keys     # 脱敏列表与数量汇总
+curl -s -b /tmp/j http://127.0.0.1:8000/v1/api-keys     # 脱敏列表（含名称）与数量汇总
 KEY_ID=<上面返回的 id>
 curl -s -b /tmp/j -H "X-CSRF-Token: $CSRF" -H 'Content-Type: application/json' \
   -d '{"confirm":true}' http://127.0.0.1:8000/v1/api-keys/$KEY_ID/revoke
 curl -s -b /tmp/j 'http://127.0.0.1:8000/v1/usage/summary?from=2026-10-01&to=2026-10-03'
 curl -s -b /tmp/j 'http://127.0.0.1:8000/v1/billing/charges?limit=20'
 ```
+
+已撤销密钥可通过页面确认删除，或 `DELETE /v1/api-keys/{id}`（会话与 CSRF）删除。成功返回 `{code:"ok"}`；可用密钥返回 409，他人或不存在返回 404。删除后列表隐藏，历史调用与费用保留，重复删除幂等。详见[删除需求](docs/20261007-撤销密钥删除-需求.md)。
 
 统计接口按 UTC 半开区间 `[from, to)` 过滤，只返回当前用户名下的数据；明细用
 `cursor` 做 keyset 分页，响应带 `next_cursor`/`has_more`。汇总与明细同源，可逐条对账。

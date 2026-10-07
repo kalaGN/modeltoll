@@ -35,7 +35,7 @@
 - 持久化为本机 MySQL `laya_platform`，七张表：设计 §2 的 `users`、`user_sessions`、
   `api_keys`、`pricing_rules`、`api_calls`、`usage_charges`，加上实现补齐的
   `login_throttle`；DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
-  `0002_api_keys.sql`、`0003_billing.sql`），不虚构未设计的表。`api_calls` 与
+  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`），不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
 
@@ -63,7 +63,7 @@
 
 ## 测试与验证
 
-- 当前没有自动化测试框架和套件，`customer_service_test.py` 是 CLI 演示，不是测试。
+- 已有 `backend/tests` 标准库 unittest 密钥删除回归套件，`customer_service_test.py` 是 CLI 演示，不是测试。
 - 新功能覆盖正常、非法、边界输入及错误映射，用可复现命令记录验证。鉴权与多租户变更
   必须验证跨用户隔离、撤销即时生效与队列期间失效（拿到锁后重检），不能只测正常路径。
 - Bug 流程：复现 → 失败测试 → 根因 → 最小修复 → 相关验证 → 全量已有回归。
@@ -74,7 +74,7 @@
 - 并发、超时、失败注入按变更范围验证；样本使用合成文本，不持久化客户隐私。
 - 无覆盖率门槛；新增测试工具/依赖前写明需求和具体执行命令。
 - 当前门禁是 `uv pip check`、`zsh -n run-api run-laya`、Python 语法解析、OpenAPI 生成检查
-  与前端 `npm run build`（见 AGENTS）；无测试、Lint、覆盖率与类型检查可运行。
+  与前端 `npm run build`（见 AGENTS）；另有 `PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`；无 Lint、覆盖率与类型检查配置。
 - 不存在的全量测试、类型检查及打包应标记“未配置”，不得当成通过。
 
 ## 安全、可靠性与性能

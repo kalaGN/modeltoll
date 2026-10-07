@@ -36,6 +36,12 @@ class ApiKeyNotFound(ApiKeyError):
     message = "API Key 不存在"
 
 
+class ApiKeyNotRevoked(ApiKeyError):
+    status_code = 409
+    code = "api_key_not_revoked"
+    message = "请先撤销 API Key，再删除"
+
+
 @dataclass(frozen=True)
 class Principal:
     """通过 Key 鉴权后的可信归属；推理与统计只使用它，不接受客户端声明。"""
@@ -48,6 +54,7 @@ class Principal:
 @dataclass(frozen=True)
 class ApiKeyRecord:
     id: str
+    name: str
     display: str
     status: str
     created_at: datetime.datetime
@@ -58,6 +65,7 @@ class ApiKeyRecord:
     def public(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "name": self.name,
             "display": self.display,
             "status": self.status,
             "created_at": iso_utc(self.created_at),
@@ -74,13 +82,14 @@ def iso_utc(value: datetime.datetime | None) -> str | None:
 
 
 _SELECT_COLUMNS = (
-    "id, display_prefix, last_four, created_at, last_used_at, revoked_at"
+    "id, name, display_prefix, last_four, created_at, last_used_at, revoked_at"
 )
 
 
 def _record(row: dict[str, Any]) -> ApiKeyRecord:
     return ApiKeyRecord(
         id=row["id"],
+        name=row["name"],
         display=security.masked_key(row["display_prefix"], row["last_four"]),
         status="revoked" if row["revoked_at"] else "active",
         created_at=row["created_at"],
@@ -95,14 +104,14 @@ def _fetch(key_id: str) -> dict[str, Any]:
         return cur.fetchone()
 
 
-def create(user_id: str) -> tuple[ApiKeyRecord, str]:
+def create(user_id: str, name: str = "") -> tuple[ApiKeyRecord, str]:
     secret, prefix, last_four = security.new_api_key()
     key_id = str(uuid.uuid4())
     with session.cursor() as cur:
         cur.execute(
-            "INSERT INTO api_keys (id, user_id, key_hash, display_prefix, last_four, created_at)"
-            " VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP(3))",
-            (key_id, user_id, security.hash_secret(secret), prefix, last_four),
+            "INSERT INTO api_keys (id, user_id, name, key_hash, display_prefix, last_four, created_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(3))",
+            (key_id, user_id, name, security.hash_secret(secret), prefix, last_four),
         )
     return _fetch_record(key_id), secret
 
@@ -115,7 +124,7 @@ def list_for_user(user_id: str) -> list[ApiKeyRecord]:
     with session.cursor() as cur:
         cur.execute(
             f"SELECT {_SELECT_COLUMNS} FROM api_keys"
-            " WHERE user_id = %s ORDER BY created_at DESC, id DESC",
+            " WHERE user_id = %s AND deleted_at IS NULL ORDER BY created_at DESC, id DESC",
             (user_id,),
         )
         rows = cur.fetchall()
@@ -127,14 +136,41 @@ def revoke(user_id: str, key_id: str) -> ApiKeyRecord:
     with session.cursor() as cur:
         cur.execute(
             "UPDATE api_keys SET revoked_at = UTC_TIMESTAMP(3)"
-            " WHERE id = %s AND user_id = %s AND revoked_at IS NULL",
+            " WHERE id = %s AND user_id = %s AND revoked_at IS NULL AND deleted_at IS NULL",
             (key_id, user_id),
         )
         if cur.rowcount == 0:
-            cur.execute("SELECT id FROM api_keys WHERE id = %s AND user_id = %s", (key_id, user_id))
+            cur.execute(
+                "SELECT id FROM api_keys WHERE id = %s AND user_id = %s AND deleted_at IS NULL",
+                (key_id, user_id),
+            )
             if cur.fetchone() is None:
                 raise ApiKeyNotFound()
     return _fetch_record(key_id)
+
+
+def delete(user_id: str, key_id: str) -> None:
+    """仅隐藏本人已撤销 Key；原始行保留以维持历史调用与费用关联。"""
+    with session.cursor() as cur:
+        cur.execute(
+            "UPDATE api_keys SET deleted_at = UTC_TIMESTAMP(3)"
+            " WHERE id = %s AND user_id = %s AND revoked_at IS NOT NULL AND deleted_at IS NULL",
+            (key_id, user_id),
+        )
+        if cur.rowcount:
+            return
+        cur.execute(
+            "SELECT revoked_at, deleted_at FROM api_keys WHERE id = %s AND user_id = %s",
+            (key_id, user_id),
+        )
+        record = cur.fetchone()
+        if record is None:
+            raise ApiKeyNotFound()
+        if record["revoked_at"] is None:
+            raise ApiKeyNotRevoked()
+        # 已删除时幂等成功；若刚好与撤销并发，则重新由客户端发起删除。
+        if record["deleted_at"] is None:
+            raise ApiKeyNotRevoked()
 
 
 def authenticate(authorization: str) -> Principal:

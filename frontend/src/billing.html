@@ -6,100 +6,96 @@
   <title>费用统计 · Laya 模型 API 平台</title>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
-<body class="bg-[#f5f7fa] text-[#111827]" data-page="billing">
-<div class="flex min-h-screen">
-  <aside class="flex w-[260px] shrink-0 flex-col border-r border-[#e5e7eb] bg-white">
-    <div class="flex items-center gap-3 px-6 py-6">
-      <span class="grid h-9 w-9 place-items-center rounded-lg bg-[#2563eb] font-bold text-white">L</span>
-      <span><span class="block text-lg font-semibold">Laya</span>
-      <span class="block text-xs text-[#6b7280]">模型 API 平台</span></span>
-    </div>
-    <nav class="flex-1 space-y-1 px-3">
-      <a href="/keys" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[#374151] hover:bg-[#f3f4f6]">
+<body class="console-page" data-page="billing">
+<a class="skip-link" href="#main-content">跳转到主要内容</a>
+<div class="console-shell">
+  <aside class="console-sidebar">
+    <a href="/keys" class="brand" aria-label="Laya 首页">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M10 1 2 12v11l8 8 8-8V12Z" fill="currentColor"/><path d="M19 21h11v10H19Z" fill="currentColor"/></svg>
+      <span><strong>Laya</strong><small>模型 API 平台</small></span>
+    </a>
+    <nav class="console-nav" aria-label="主要导航">
+      <a href="/keys" class="nav-link">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></svg>
         API Key 管理</a>
-      <a href="/usage" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[#374151] hover:bg-[#f3f4f6]">
+      <a href="/usage" class="nav-link">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
         调用统计</a>
-      <a href="/billing" class="flex items-center gap-3 rounded-lg bg-[#eff6ff] px-3 py-2 text-sm font-medium text-[#2563eb]">
+      <a href="/billing" class="nav-link is-active" aria-current="page">
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         费用统计</a>
     </nav>
-    <div class="flex items-center gap-3 border-t border-[#e5e7eb] px-5 py-4 text-sm text-[#374151]">
-      <span class="grid h-8 w-8 place-items-center rounded-full bg-[#eff6ff] text-[#2563eb]">@</span>
+    <div class="account-panel">
+      <span class="account-avatar" aria-hidden="true">@</span>
       <span id="account" class="flex-1 truncate">加载中…</span>
-      <button id="logout" class="text-xs text-[#6b7280] hover:text-[#2563eb]">退出</button>
+      <button id="logout" class="text-xs text-[#62695e] hover:text-[#344b2d]">退出</button>
     </div>
   </aside>
 
-  <div class="flex min-w-0 flex-1 flex-col">
-    <header class="flex h-14 items-center justify-between border-b border-[#e5e7eb] bg-white px-8">
-      <span class="text-[15px] font-semibold">费用统计</span>
-      <span class="grid h-8 w-8 place-items-center rounded-full bg-[#eff6ff] text-[#2563eb]">L</span>
-    </header>
+  <div class="console-workspace">
 
-    <main class="mx-auto w-full max-w-[1120px] space-y-6 p-8">
+    <main id="main-content" class="console-main">
       <div>
-        <h1 class="text-[28px] font-bold">费用统计</h1>
-        <p class="mt-1 text-sm text-[#6b7280]">查看当前账号名下的计费 Token 与费用明细。</p>
+        <h1 class="page-title">费用统计</h1>
+        <p class="mt-1 text-sm text-[#62695e]">查看当前账号名下的计费 Token 与费用明细。</p>
       </div>
 
-      <section class="rounded-xl border border-[#dbeafe] bg-[#eff6ff] px-5 py-4 text-sm text-[#1d4ed8]">
+      <section class="safety-notice">
         <p id="price-banner" class="font-semibold">加载价格规则…</p>
-        <p id="price-formula" class="mt-1 text-[13px] text-[#1e40af]"></p>
+        <p id="price-formula" class="mt-1 text-[13px] text-[#38472d]"></p>
       </section>
 
-      <section class="flex flex-wrap items-end gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
+      <section class="filter-panel" aria-label="筛选记录">
         <span class="text-sm">
-          <span class="mb-1.5 block text-[13px] text-[#6b7280]">时间范围（UTC，留空取最近 30 天）</span>
+          <span class="mb-1.5 block text-[13px] text-[#62695e]">时间范围（UTC，留空取最近 30 天）</span>
           <span class="flex items-center gap-2">
-            <input id="date-from" type="date" class="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none focus:border-[#2563eb]">
-            <span class="text-xs text-[#6b7280]">至</span>
-            <input id="date-to" type="date" class="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none focus:border-[#2563eb]">
+            <input id="date-from" type="date" aria-label="开始日期（UTC）" class="rounded-lg border border-[#dddfd7] bg-white px-3 py-2 text-sm outline-none focus:border-[#344b2d]">
+            <span class="text-xs text-[#62695e]">至</span>
+            <input id="date-to" type="date" aria-label="结束日期（UTC）" class="rounded-lg border border-[#dddfd7] bg-white px-3 py-2 text-sm outline-none focus:border-[#344b2d]">
           </span>
         </span>
         <label class="text-sm">
-          <span class="mb-1.5 block text-[13px] text-[#6b7280]">API Key</span>
-          <select id="key-filter" class="w-56 rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none focus:border-[#2563eb]">
+          <span class="mb-1.5 block text-[13px] text-[#62695e]">API Key</span>
+          <select id="key-filter" class="w-56 rounded-lg border border-[#dddfd7] bg-white px-3 py-2 text-sm outline-none focus:border-[#344b2d]">
             <option value="">全部 API Key</option>
           </select>
         </label>
-        <button id="apply" class="rounded-lg bg-[#2563eb] px-5 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8]">查询</button>
+        <button id="apply" class="button-primary">查询</button>
       </section>
 
-      <div id="error" class="hidden rounded-xl border border-[#fecaca] bg-[#fee2e2] px-4 py-3 text-sm text-[#dc2626]"></div>
+      <div id="error" role="alert" class="hidden rounded-xl border border-[#fecaca] bg-[#fee2e2] px-4 py-3 text-sm text-[#b42318]"></div>
 
-      <section class="grid gap-4 sm:grid-cols-3">
-        <div class="rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="block text-xs text-[#6b7280]">计费输入 Token</span>
-          <span id="stat-tokens" class="mt-1.5 block text-[26px] font-bold leading-tight">0</span>
+      <section class="metric-grid sm:grid-cols-3" aria-label="关键指标">
+        <div class="metric">
+          <span class="block text-xs text-[#62695e]">计费输入 Token</span>
+          <span id="stat-tokens" class="mt-1.5 block text-[26px] font-bold leading-tight">—</span>
         </div>
-        <div class="rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="block text-xs text-[#6b7280]">累计费用</span>
-          <span id="stat-amount" class="mt-1.5 block text-[26px] font-bold leading-tight text-[#16a34a]">¥ 0</span>
+        <div class="metric">
+          <span class="block text-xs text-[#62695e]">累计费用</span>
+          <span id="stat-amount" class="mt-1.5 block text-[26px] font-bold leading-tight text-[#28743e]">—</span>
         </div>
-        <div class="rounded-xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
-          <span class="block text-xs text-[#6b7280]">本期调用</span>
-          <span id="stat-calls" class="mt-1.5 block text-[26px] font-bold leading-tight">0</span>
+        <div class="metric">
+          <span class="block text-xs text-[#62695e]">本期调用</span>
+          <span id="stat-calls" class="mt-1.5 block text-[26px] font-bold leading-tight">—</span>
         </div>
       </section>
 
-      <section class="rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
+      <section class="console-panel">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">每日费用</h2>
-          <span id="range" class="text-xs text-[#9ca3af]"></span>
+          <span id="range" class="text-xs text-[#687064]"></span>
         </div>
         <svg id="chart" class="mt-4 block h-45 w-full" role="img" aria-label="每日费用柱状图"></svg>
-        <p class="mt-2 text-xs text-[#6b7280]">
+        <p class="mt-2 text-xs text-[#62695e]">
           费用明细 <span id="stat-charges">0</span> 条 · 计费待确认 <span id="pending">0</span> 笔
         </p>
       </section>
 
-      <section class="rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
+      <section class="console-panel">
         <h2 class="text-lg font-semibold">费用明细</h2>
-        <div class="mt-4 overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-[#f9fafb] text-[13px] text-[#6b7280]">
+        <div class="table-scroll" tabindex="0" role="region" aria-label="明细表，可横向滚动">
+          <table class="records-table">
+            <thead class="bg-[#f5f6f0] text-[13px] text-[#62695e]">
               <tr>
                 <th class="px-3 py-2 font-medium">请求标识</th>
                 <th class="px-3 py-2 font-medium">API Key</th>
@@ -113,11 +109,11 @@
           </table>
         </div>
         <div class="mt-4 flex items-center justify-between text-sm">
-          <span id="page-info" class="text-[#6b7280]"></span>
+          <span id="page-info" class="text-[#62695e]"></span>
           <span class="flex gap-3">
-            <button id="prev" class="rounded-lg border border-[#e5e7eb] px-4 py-1.5 hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40">上一页</button>
-            <button id="next" class="rounded-lg border border-[#e5e7eb] px-4 py-1.5 hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40">下一页</button>
-            <select id="page-size" class="rounded-lg border border-[#e5e7eb] bg-white px-2 py-1.5 text-sm outline-none focus:border-[#2563eb]" aria-label="每页条数">
+            <button id="prev" class="rounded-lg border border-[#dddfd7] px-4 py-1.5 hover:bg-[#f5f6f0] disabled:cursor-not-allowed disabled:opacity-40">上一页</button>
+            <button id="next" class="rounded-lg border border-[#dddfd7] px-4 py-1.5 hover:bg-[#f5f6f0] disabled:cursor-not-allowed disabled:opacity-40">下一页</button>
+            <select id="page-size" class="rounded-lg border border-[#dddfd7] bg-white px-2 py-1.5 text-sm outline-none focus:border-[#344b2d]" aria-label="每页条数">
               <option value="20">20 条/页</option>
               <option value="50">50 条/页</option>
               <option value="100">100 条/页</option>
@@ -126,9 +122,9 @@
         </div>
       </section>
 
-      <section class="rounded-xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
+      <section class="console-panel">
         <h2 class="text-lg font-semibold">计费说明</h2>
-        <ul class="mt-3 space-y-2 text-[13px] leading-relaxed text-[#374151]">
+        <ul class="mt-3 space-y-2 text-[13px] leading-relaxed text-[#364134]">
           <li>· 金额由服务端使用 Decimal 精确计算，页面只展示结果，不参与计费运算。</li>
           <li>· 每次调用固定当时的价格版本，历史费用不随后续调价变化。</li>
           <li id="price-policy-li">· <span id="price-policy"></span>，仅成功且产出原生 Token 用量的调用计费。</li>
@@ -136,7 +132,7 @@
         </ul>
       </section>
 
-      <p class="pb-4 text-center text-xs text-[#6b7280]">汇总与明细取自同一 UTC 时间窗口，可对账。</p>
+      <p class="pb-4 text-center text-xs text-[#62695e]">汇总与明细取自同一 UTC 时间窗口，可对账。</p>
     </main>
   </div>
 </div>

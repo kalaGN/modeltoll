@@ -25,6 +25,11 @@
 
 ## 项目盘点
 
+- 2026-10-07 四页视觉改版采用暖白主画布、墨绿品牌区与酸橙色主操作；管理页在小屏
+  使用顶部导航，表格独立横向滚动。登录品牌区不再展示虚构统计。Key 弹窗约束并恢复
+  键盘焦点；完整密钥只在创建弹窗展示，接入示例使用 `YOUR_API_KEY` 占位符。
+  验证范围见 [改版任务](20261007-页面视觉改版-任务.md)，不代表新增业务功能或奖项认证。
+
 - 形态：本机 HTTP 服务（后端 + 同源页面）+ CLI。后端在 `backend/app`，
   入口 `app.main:app`；前端在 `frontend/`，Tailwind 构建到 `frontend/dist`。
 - `backend/app/main.py` 是 ASGI 入口与组装点；`backend/app/api/v1/` 放路由；
@@ -45,7 +50,7 @@
 - 已安装包一致性可用 `uv pip check --python .venv/bin/python --cache-dir .uv-cache`。
 - 数据库：本机 MySQL 9.6.0，库 `laya_platform`，专用账号 `laya_app@127.0.0.1`，
   表 `users`、`user_sessions`、`login_throttle`、`api_keys`、`pricing_rules`、
-  `api_calls`、`usage_charges`，DDL 与回滚在 `backend/migrations/`（0001/0002/0003）。
+  `api_calls`、`usage_charges`，DDL 与回滚在 `backend/migrations/`（0001/0002/0003/0004）。
   `pricing_rules` 有 `v1` 种子规则（¥1 / 1,000,000 输入 Token，CNY，
   计费策略 `succeeded_only_v1`），历史调用固定其 `pricing_rule_id`。
   未见缓存服务、MQ、搜索、对象存储或迁移框架。凭据在根目录 `.env`（已忽略）。
@@ -54,7 +59,7 @@
 - 未见 Docker、Kubernetes、反向代理、进程管理配置或 CI；运行方式是终端进程。
 - Git 于 2026-10-02 初始化；`.gitignore` 排除虚拟环境、模型/工具缓存、IDE、字节码、
   日志、本机密钥、`node_modules/` 与 `frontend/dist/`。团队分支策略待确认。
-- 没有自动化测试文件/配置；客服文件名含 test 但运行的是 CLI 推理。
+- 已有 `backend/tests/test_api_key_deletion.py` 标准库 unittest 删除回归测试；客服文件名含 test 但运行的是 CLI 推理。
 - 未安装 pytest、ruff、mypy、build，也没有 formatter、Lint、覆盖率配置。
 
 ## 架构与生命周期
@@ -102,8 +107,8 @@ lifespan 顺序是先 `db/models.init_db()` 执行迁移 SQL，再创建 `Router
 | GET `/v1/auth/me` | 会话 Cookie | `{code,user}` |
 | POST `/v1/auth/logout` | 会话 Cookie | `{code:"ok"}` 并清除 Cookie |
 | GET `/v1/auth/csrf` | 无 | `{code,csrf_token}` 并下发 `laya_csrf` Cookie |
-| POST `/v1/api-keys` | 会话 + CSRF | 201 与 `{code,api_key,secret,call_example}`，`secret` 仅此一次 |
-| GET `/v1/api-keys` | 会话 | `{code,items,summary{total,active,revoked}}`，`items[].display` 脱敏 |
+| POST `/v1/api-keys` | 会话 + CSRF；可选 body `name`（≤60 字符，去空白，空串=未命名） | 201 与 `{code,api_key,secret,call_example}`，`secret` 仅此一次 |
+| GET `/v1/api-keys` | 会话 | `{code,items,summary{total,active,revoked}}`，`items[].display` 脱敏、`items[].name` 为展示名称 |
 | POST `/v1/api-keys/{id}/revoke` | 会话 + CSRF，body `{confirm:true}` | `{code,api_key}`；他人或不存在同为 404 |
 | GET `/v1/usage/summary` | 会话 + `from`/`to`/`api_key_id`/`endpoint` | `range`、`totals`、按 UTC 日的 `series` |
 | GET `/v1/usage/calls` | 同上 + `limit`/`cursor` | `items[]`（含 `request_id`、状态、Token、耗时）、`next_cursor`、`has_more` |
@@ -176,7 +181,7 @@ P1 表示涉及未来对外暴露、资源耗尽或明显验证缺口；P2 为�
 | P1 | `accepted`/`running` 遗留行只作为可恢复记录，没有启动时收敛流程 | 进程被强杀后统计会长期显示“进行中” | 设计超时扫描把遗留行置为 `interrupted`，保持不计费 |
 | P1 | inference_lock 无排队截止/请求级推理超时 | 并发请求占线程排队，超时客户端不代表推理取消 | 明确队列上限、超时和取消策略并验证 |
 | P1 | 仅字段字符校验，无请求体总字节/深度边界 | 超大或深嵌套 JSON 在校验前消耗资源 | 评估服务/代理身体积限制及边界样本 |
-| P1 | 没有自动化测试，登录与推理均靠本机端到端命令验证 | 契约、阈值、限速和错误分支易回归 | 后续变更同步 Unit/契约/集成测试 |
+| P1 | 自动化测试目前仅覆盖密钥删除，登录与推理均靠本机端到端命令验证 | 契约、阈值、限速和错误分支易回归 | 后续变更同步 Unit/契约/集成测试 |
 | ~~P1~~ 已收敛 | 本机三张表曾由原型 DDL 先建，迁移用 `IF NOT EXISTS` 不补差异 | 2026-10-02 已用两条新增型 `ALTER TABLE` 补上 `chk_users_status` 与 `idx_throttle_locked`，未清空数据 | 新环境仍直接执行 `0001_auth.sql`；结构差异用 `init_db()` 与 `information_schema` 复核 |
 | P2 | requirements-api.txt 非完整依赖，未锁版本 | 新环境不能仅靠此文件完整复现模型服务 | 明确完整依赖与锁定策略后再修改配置 |
 | P2 | 已初始化 Git 并添加忽略规则；缓存和 IDE 目录仍在根目录 | 手工强制添加仍可能误跟踪本机文件 | 每次提交前审查暂存清单，避免 git add -f |
@@ -193,6 +198,8 @@ P1 表示涉及未来对外暴露、资源耗尽或明显验证缺口；P2 为�
 README 的本机 URL 是服务运行时地址，不是外网失效链接。
 SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字符串拼接；
 未见上传、模板或自定义反序列化路径。
+
+已撤销密钥通过 `DELETE /v1/api-keys/{id}` 软删除（会话 + CSRF）；`deleted_at` 隐藏管理列表和筛选项，保留历史统计及外键。可用密钥 409，他人/不存在 404，重复删除 200；已删除密钥撤销返回 404。
 
 ## 验证记录与待确认
 
@@ -260,6 +267,14 @@ SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字
   不再报 `TypeError`、`/keys` 与 `/usage` 的时间列表头标注 UTC。
   验证为 14 项后端复现（`TestClient`，不加载模型）+ 27 项筛选/时区 + 39 项页面回归全绿，
   静态门禁与 OpenAPI 14 路径复跑通过。这是行为变更而非纯展示改动，已记录在任务 §9。
+- 2026-10-03 密钥名称：`api_keys` 增加 `name VARCHAR(60) NOT NULL DEFAULT ''`，
+  设计 §5 原把命名列为「暂不加列」，本次按用户要求实现并同步设计。创建接口接受可选
+  `name`（去空白、>60 字符 422、空串即未命名），列表/创建/撤销响应都回传 `name`；
+  不提供改名接口，`authenticate` 与 `Principal` 不含名称，鉴权与归属判定不受影响。
+  已存在的 27 把密钥全部为未命名（页面显示「未命名」）。列由本机 `ALTER TABLE` 补齐，
+  新库由 `0002_api_keys.sql` 建表即含该列；列级回滚语句记在 `0002_api_keys_rollback.sql`。
+  验证：19 项名称契约检查（`/tmp/laya_keyname.py`）+ 44 项页面回归 + 29 项筛选回归全绿，
+  原 14 项缺陷复现保持全绿。
 - 待确认：Git 协作策略、完整依赖与模型 revision、业务验收、部署目标、
   性能/SLO、测试工具及简单任务阈值；会话有效期、限速阈值、密码规则、
   金额展示精度、统计时区、失败/超时计费策略与分页上限仍为本次采用值，未经产品确认。

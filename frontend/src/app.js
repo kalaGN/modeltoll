@@ -56,6 +56,50 @@ function notice(id, message) {
   }
 }
 
+// 管理页弹窗保留原有业务请求，只管理焦点、背景与键盘行为。
+const modalReturnFocus = new Map();
+
+function openModal(modal) {
+  modalReturnFocus.set(modal, document.activeElement);
+  notice(modal.id.replace("-modal", "-error"), "");
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  document.querySelector(".console-shell").inert = true;
+  document.body.style.overflow = "hidden";
+  modal.querySelector("input, button")?.focus();
+}
+
+function closeModal(modal) {
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+  document.querySelector(".console-shell").inert = false;
+  document.body.style.overflow = "";
+  const previous = modalReturnFocus.get(modal);
+  if (previous?.isConnected) previous.focus();
+  else $("create")?.focus();
+  modalReturnFocus.delete(modal);
+}
+
+document.addEventListener("keydown", function (event) {
+  const modal = document.querySelector(".modal-overlay:not(.hidden)");
+  if (!modal) return;
+  if (event.key === "Escape" && modal.id !== "secret-modal") {
+    const prefix = modal.id.replace("-modal", "");
+    if (!$(prefix + "-confirm").disabled) $(prefix + "-cancel").click();
+  }
+  if (event.key !== "Tab") return;
+  const controls = [...modal.querySelectorAll("button:not(:disabled), input:not(:disabled)")];
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+});
+
 const numberFormat = new Intl.NumberFormat("en-US");
 
 function fmtInt(value) {
@@ -116,16 +160,20 @@ const STATUS_LABEL = {
 };
 
 function statusCell(status) {
-  const td = cell(`${STATUS_LABEL[status] ?? status}`);
+  const td = cell("");
+  const badge = document.createElement("span");
+  badge.className = `status-badge status-${status}`;
+  badge.textContent = STATUS_LABEL[status] ?? status;
   const dot = document.createElement("span");
   const color =
     status === "succeeded" || status === "active"
-      ? "bg-[#16a34a]"
+      ? "bg-[#28743e]"
       : status === "failed" || status === "revoked" || status === "interrupted"
-        ? "bg-[#dc2626]"
+        ? "bg-[#b42318]"
         : "bg-[#d97706]";
   dot.className = `mr-2 inline-block h-2 w-2 rounded-full ${color}`;
-  td.insertBefore(dot, td.firstChild);
+  badge.insertBefore(dot, badge.firstChild);
+  td.appendChild(badge);
   return td;
 }
 
@@ -178,9 +226,9 @@ function chartFrame(svg, series, max, tickLabel) {
   const label = tickLabel ?? ((v) => numberFormat.format(Math.round(v)));
   for (let step = 0; step <= 4; step += 1) {
     const y = top + (plotHeight * step) / 4;
-    svg.appendChild(svgNode("line", { x1: left, y1: y, x2: width - right, y2: y, stroke: "#eef2f7" }));
+    svg.appendChild(svgNode("line", { x1: left, y1: y, x2: width - right, y2: y, stroke: "#e4e7dc" }));
     svg.appendChild(
-      svgNode("text", { x: left - 6, y: y + 4, "text-anchor": "end", fill: "#9ca3af", "font-size": "10" },
+      svgNode("text", { x: left - 6, y: y + 4, "text-anchor": "end", fill: "#687064", "font-size": "10" },
         label((max * (4 - step)) / 4))
     );
   }
@@ -203,13 +251,13 @@ function chartFrame(svg, series, max, tickLabel) {
 }
 
 function xLabel(text, x, y, anchor) {
-  return svgNode("text", { x, y, "text-anchor": anchor, fill: "#9ca3af", "font-size": "10" }, text);
+  return svgNode("text", { x, y, "text-anchor": anchor, fill: "#687064", "font-size": "10" }, text);
 }
 
 function emptyChart(svg, message) {
   svg.textContent = "";
   svg.setAttribute("viewBox", `0 0 ${CHART.width} ${CHART.height}`);
-  svg.appendChild(svgNode("text", { x: CHART.width / 2, y: CHART.height / 2, "text-anchor": "middle", fill: "#9ca3af", "font-size": "13" }, message));
+  svg.appendChild(svgNode("text", { x: CHART.width / 2, y: CHART.height / 2, "text-anchor": "middle", fill: "#687064", "font-size": "13" }, message));
 }
 
 function lineChart(svg, series, keys, colors) {
@@ -260,7 +308,7 @@ function barChart(svg, series, key) {
       width: barWidth,
       height: Math.max(amount > 0 ? 2 : 0, height),
       rx: "3",
-      fill: "#2563eb",
+      fill: "#344b2d",
       opacity: amount > 0 ? "0.9" : "0.25",
     }));
   });
@@ -287,13 +335,13 @@ async function keysPage() {
   const tbody = $("rows");
 
   async function load() {
-    messageRow(tbody, 5, "加载中…");
+    messageRow(tbody, 6, "加载中…");
     const data = await api("/v1/api-keys");
     setText("stat-total", fmtInt(data.summary.total));
     setText("stat-active", fmtInt(data.summary.active));
     setText("stat-revoked", fmtInt(data.summary.revoked));
     if (!data.items.length) {
-      messageRow(tbody, 5, "还没有 API Key，点击右上角申请一个。");
+      messageRow(tbody, 6, "还没有 API Key，点击右上角申请一个。");
       return;
     }
     tbody.textContent = "";
@@ -307,10 +355,14 @@ async function keysPage() {
         button.addEventListener("click", () => askRevoke(item));
         actions.appendChild(button);
       } else {
-        actions.textContent = "—";
-        actions.className = "px-3 py-2 text-[#9ca3af]";
+        const button = document.createElement("button");
+        button.className = "rounded-lg border border-[#fecaca] px-3 py-1.5 text-xs text-[#b42318] hover:bg-[#fef2f2]";
+        button.textContent = "删除";
+        button.addEventListener("click", () => askDelete(item));
+        actions.appendChild(button);
       }
       tbody.appendChild(row([
+        cell(item.name || "未命名", "px-3 py-2"),
         cell(item.display, "px-3 py-2 font-mono text-[13px]"),
         statusCell(item.status),
         cell(fmtTime(item.created_at)),
@@ -322,9 +374,9 @@ async function keysPage() {
 
   function askRevoke(item) {
     const modal = $("revoke-modal");
-    setText("revoke-target", `${item.display}（撤销后不可恢复，历史调用与费用仍会保留）`);
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
+    const label = item.name ? `${item.name} · ${item.display}` : item.display;
+    setText("revoke-target", `${label}（撤销后不可恢复，历史调用与费用仍会保留）`);
+    openModal(modal);
     async function confirm() {
       const yes = $("revoke-confirm");
       yes.disabled = true;
@@ -335,40 +387,80 @@ async function keysPage() {
         notice("error", "");
         await load();
       } catch (error) {
-        notice("error", error.message);
+        notice(modal.classList.contains("hidden") ? "error" : modal.id.replace("-modal", "-error"), error.message);
       } finally {
         yes.disabled = false;
         yes.textContent = "确认撤销";
       }
     }
     function close() {
-      modal.classList.add("hidden");
-      modal.classList.remove("flex");
+      closeModal(modal);
     }
     $("revoke-confirm").onclick = confirm;
     $("revoke-cancel").onclick = close;
   }
 
-  $("create").addEventListener("click", async function () {
-    const button = $("create");
-    button.disabled = true;
-    button.textContent = "申请中…";
-    try {
-      const data = await api("/v1/api-keys", { method: "POST", body: {} });
-      showSecret(data.secret, data.call_example);
-      await load();
-    } catch (error) {
-      notice("error", error.message);
-    } finally {
-      button.disabled = false;
-      button.textContent = "申请 API Key";
+  function askDelete(item) {
+    const modal = $("delete-modal");
+    const label = item.name ? `${item.name} · ${item.display}` : item.display;
+    setText("delete-target", label);
+    openModal(modal);
+    const yes = $("delete-confirm");
+    const cancel = $("delete-cancel");
+    cancel.onclick = () => closeModal(modal);
+    yes.onclick = async function () {
+      yes.disabled = true;
+      cancel.disabled = true;
+      yes.textContent = "删除中…";
+      try {
+        await api(`/v1/api-keys/${item.id}`, { method: "DELETE" });
+        closeModal(modal);
+        notice("error", "");
+        await load();
+      } catch (error) {
+        notice(modal.classList.contains("hidden") ? "error" : "delete-error", error.message);
+      } finally {
+        yes.disabled = false;
+        cancel.disabled = false;
+        yes.textContent = "确认删除";
+      }
+    };
+  }
+
+  $("create").addEventListener("click", function () {
+    const modal = $("create-modal");
+    const input = $("key-name");
+    input.value = "";
+    openModal(modal);
+    input.focus();
+    async function confirm() {
+      const yes = $("create-confirm");
+      yes.disabled = true;
+      yes.textContent = "申请中…";
+      try {
+        const data = await api("/v1/api-keys", { method: "POST", body: { name: input.value.trim() } });
+        close();
+        notice("error", "");
+        showSecret(data.secret, data.call_example);
+        await load();
+      } catch (error) {
+        notice(modal.classList.contains("hidden") ? "error" : modal.id.replace("-modal", "-error"), error.message);
+      } finally {
+        yes.disabled = false;
+        yes.textContent = "创建";
+      }
     }
+    function close() {
+      closeModal(modal);
+    }
+    $("create-confirm").onclick = confirm;
+    $("create-cancel").onclick = close;
   });
 
   function showSecret(secret, example) {
     setText("secret", secret);
-    $("secret-modal").classList.remove("hidden");
-    $("secret-modal").classList.add("flex");
+    $("copy").textContent = "复制";
+    openModal($("secret-modal"));
     $("copy").onclick = async function () {
       try {
         await navigator.clipboard.writeText(secret);
@@ -378,11 +470,10 @@ async function keysPage() {
       }
     };
     $("close").onclick = function () {
-      $("secret-modal").classList.add("hidden");
-      $("secret-modal").classList.remove("flex");
+      closeModal($("secret-modal"));
       setText("secret", "");
     };
-    if (example) setText("example", example);
+    if (example) setText("example", example.replaceAll(secret, "YOUR_API_KEY"));
   }
 
   notice("error", "");
@@ -401,7 +492,8 @@ async function populateKeyFilter() {
   data.items.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.id;
-    option.textContent = `${item.display}${item.status === "revoked" ? "（已撤销）" : ""}`;
+    option.textContent = `${item.name ? item.name + " · " : "未命名 · "}${item.display}`
+      + (item.status === "revoked" ? "（已撤销）" : "");
     select.appendChild(option);
   });
 }
@@ -479,8 +571,8 @@ async function usagePage() {
     setText("range", `${fmtTime(summary.range.from)} 至 ${fmtTime(summary.range.to)}（UTC）`);
     setText("in-progress", fmtInt(totals.calls_in_progress));
     setText("pending", fmtInt(totals.billing_pending_count));
-    lineChart($("chart"), summary.series, ["succeeded", "failed"], ["#2563eb", "#dc2626"]);
-    legend($("chart"), [["成功", "#2563eb"], ["失败", "#dc2626"]]);
+    lineChart($("chart"), summary.series, ["succeeded", "failed"], ["#344b2d", "#dc2626"]);
+    legend($("chart"), [["成功", "#344b2d"], ["失败", "#dc2626"]]);
     if (!calls.items.length) {
       messageRow(tbody, 7, "所选范围内暂无调用记录。");
     } else {

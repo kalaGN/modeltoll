@@ -1,4 +1,4 @@
-"""Key 申请、列表与撤销。全部走登录会话，归属只取会话里的 user_id。"""
+"""Key 申请、列表、撤销与软删除。归属只取登录会话里的 user_id。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api import dependencies
-from app.schemas.api_keys import RevokeRequest
+from app.schemas.api_keys import CreateKeyRequest, RevokeRequest
 from app.services import accounts, api_keys
 
 logger = logging.getLogger("laya.api.keys")
@@ -24,11 +24,12 @@ def _as_http(exc: api_keys.ApiKeyError) -> HTTPException:
 @router.post("")
 def create_key(
     request: Request,
+    body: CreateKeyRequest | None = None,
     user: accounts.User = Depends(dependencies.require_user),
     x_csrf_token: str = Header(default=""),
 ):
     dependencies.require_csrf(request, x_csrf_token)
-    record, secret = api_keys.create(user.id)
+    record, secret = api_keys.create(user.id, (body or CreateKeyRequest()).name)
     logger.info("API key created id=%s user_id=%s", record.id, user.id)
     return JSONResponse(
         status_code=201,
@@ -73,6 +74,24 @@ def revoke_key(
         raise _as_http(exc) from None
     logger.info("API key revoked id=%s user_id=%s", key_id, user.id)
     return {"code": "ok", "api_key": record.public}
+
+
+@router.delete("/{key_id}")
+def delete_key(
+    key_id: str,
+    request: Request,
+    user: accounts.User = Depends(dependencies.require_user),
+    x_csrf_token: str = Header(default=""),
+):
+    dependencies.require_csrf(request, x_csrf_token)
+    if not _is_uuid(key_id):
+        raise _as_http(api_keys.ApiKeyNotFound())
+    try:
+        api_keys.delete(user.id, key_id)
+    except api_keys.ApiKeyError as exc:
+        raise _as_http(exc) from None
+    logger.info("API key deleted from list id=%s user_id=%s", key_id, user.id)
+    return {"code": "ok"}
 
 
 def _is_uuid(value: str) -> bool:

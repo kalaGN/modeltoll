@@ -8,7 +8,7 @@ from app.core import config
 from app.db import session
 
 # 按依赖顺序：账号/会话 → Key → 价格与调用/费用。回滚脚本同名 *_rollback.sql。
-MIGRATIONS = ("0001_auth.sql", "0002_api_keys.sql", "0003_billing.sql")
+MIGRATIONS = ("0001_auth.sql", "0002_api_keys.sql", "0003_billing.sql", "0004_api_key_deletion.sql")
 
 
 def statements(sql_file: Path) -> list[str]:
@@ -22,7 +22,7 @@ def statements(sql_file: Path) -> list[str]:
 
 
 def init_db() -> None:
-    # MySQL 的 DDL 隐式提交，无法用事务回滚；语句均为 IF NOT EXISTS，可重复执行收敛。
+    # MySQL 的 DDL 隐式提交；迁移通过 IF NOT EXISTS 或元数据检查允许重复执行。
     with session.cursor() as cur:
         for name in MIGRATIONS:
             for statement in statements(config.MIGRATIONS_DIR / name):

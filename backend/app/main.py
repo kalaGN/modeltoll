@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import dependencies
 from app.api.v1 import api_keys as api_keys_routes
 from app.api.v1 import auth as auth_routes
+from app.api.v1 import admin as admin_routes
 from app.api.v1 import inference as inference_routes
 from app.api.v1 import statistics as statistics_routes
 from app.core import config, security
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Laya 本地模型 API", version="1.0.0", lifespan=lifespan)
 app.include_router(auth_routes.router)
+app.include_router(admin_routes.router)
 app.include_router(api_keys_routes.router)
 app.include_router(statistics_routes.router)
 app.include_router(inference_routes.router)
@@ -99,7 +101,8 @@ def login(request: Request):
 
 @app.get("/", include_in_schema=False)
 def root(request: Request):
-    return RedirectResponse("/keys" if dependencies.current_user(request) else "/login")
+    user = dependencies.current_user(request)
+    return RedirectResponse(("/admin" if user.is_admin else "/keys") if user else "/login")
 
 
 @app.get("/keys", include_in_schema=False)
@@ -122,3 +125,16 @@ def health(request: Request):
         "model": model_runtime.MODEL_NAME,
         "device": request.app.state.device,
     }
+
+
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/settings", include_in_schema=False)
+def admin_page(request: Request):
+    user = dependencies.current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=302)
+    dependencies.require_admin(user)
+    name = "admin-settings.html" if request.url.path.endswith("/settings") else "admin.html"
+    response = _with_csrf(request, _dist_page(name))
+    response.headers["Cache-Control"] = "no-store"
+    return response

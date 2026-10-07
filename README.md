@@ -12,7 +12,7 @@ AI 开发入口：[AGENTS.md](AGENTS.md)；[规则索引](docs/AI_RULES.md)；
 当前环境为 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、
 MySQL 9.6.0、Node 22.22.3（2026-10-02 本机快照）。`requirements-api.txt` 声明 API、
 鉴权与数据库驱动依赖，不是完整模型安装清单，也没有 Python 锁文件；前端有
-`package-lock.json`。密钥删除有标准库 unittest 回归测试（`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`）；未配置 Lint 或类型检查。
+`package-lock.json`。密钥删除、管理员权限和品牌配置有标准库 unittest 回归测试（`PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`）；未配置 Lint 或类型检查。
 
 ## 目录结构
 
@@ -35,7 +35,8 @@ MYSQL_DATABASE=laya_platform
 ```
 
 表结构在服务启动时按 `backend/migrations/` 的 `0001_auth.sql`、`0002_api_keys.sql`、
-`0003_billing.sql`、`0004_api_key_deletion.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
+`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、
+`0006_platform_settings.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
 `CREATE`/`INDEX`/`REFERENCES` 与 `ALTER` 权限；DDL 与回滚脚本成对提供。
 
 ## 构建前端
@@ -149,3 +150,26 @@ curl http://127.0.0.1:8000/v1/predict \
 
 健康检查：`curl http://127.0.0.1:8000/health`。
 本服务执行分类和评分，不生成聊天回复。
+
+## 管理员后台与平台品牌
+
+`users.is_admin` 默认为 0，注册不能升权。登录、注册和 `/v1/auth/me` 的 `user` 新增布尔字段
+`is_admin`；管理员登录或访问根路径进入 `/admin`，普通账号进入 `/keys`。
+管理员可在 `/admin/settings` 设置名称、简介、Logo，在个人控制台可返回平台管理。
+首次使用前须明确指定已注册的管理员账号，再由有权限的数据库操作人员按邮箱将
+`users.is_admin` 设为 1；本机已按用户明确指定完成首个管理员赋权，管理员身份不由迁移自动设置。角色每次从数据库读取，降权后原会话
+的下一次管理请求即被拒绝。
+
+- `GET /v1/admin/overview?from=&to=`：管理员会话，最多 366 天，返回平台存量指标和 UTC 日趋势。
+  账号总数包含所有账号，可用密钥排除已撤销、已删除及停用账号；历史费用保留。
+- `GET /v1/platform/branding`：公开的名称、简介、Logo 地址，供页面品牌展示。
+- `GET /v1/platform/logo`：PNG 图片，未设置时 404，页面显示默认 Logo。
+- `PUT /v1/admin/settings`：管理员会话 + CSRF，JSON `{name,description,logo_data_url}`。
+  名称 1–60 字，简介最多 200 字；Logo 为 PNG/JPEG/WebP 的 base64 data URL，解码后最多
+  2 MB，尺寸最多 4096 × 4096；null 保留原图，空字符串恢复默认。请求总大小最多 3 MB。
+
+新增依赖 Pillow（本机验证 12.3.0，声明 `>=11,<13`），只用于 Logo 解码验证与转码；
+图片验证后缩放至最多 512px 并重新编码为 PNG，去除元数据。配置保存在 MySQL 单行表
+`platform_settings` 中，保存成功后刷新各页面读取新品牌；浏览器不负责存储全局配置。
+迁移/回滚脚本成对提供，先回滚代码再回滚结构；回滚配置表会丢失品牌定制，不自动执行。
+已有服务须重新加载后端代码才能使用新增接口，不要重复启动模型进程。

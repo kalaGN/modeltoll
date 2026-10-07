@@ -21,7 +21,7 @@
 
 - 平台目标为邮箱密码登录、API Key 管理与 Token 计费；当前已实现登录、注册、会话、
   登录限速、API Key 生命周期、Bearer 推理鉴权、调用记录、Decimal 计费、统计查询，
-  以及登录/Key 管理/调用统计/费用统计四个页面。失败与超时调用的计费规则仍待产品确认。
+  以及登录/Key 管理/调用统计/费用统计四个个人页面与管理员总览/配置页面。失败与超时调用的计费规则仍待产品确认。
 - 登录写操作必须带 Double-Submit CSRF，会话使用 HttpOnly Cookie；对外暴露仍待安全 Spec。
 - 明确需求要求的范围才扩展；不主动引入消息队列、缓存服务或设计未覆盖的数据层。
 - 代码按 [架构设计](20261002-Laya平台-设计.md) 组织：后端在 `backend/app`
@@ -32,10 +32,10 @@
 - 新抽象必须有重复逻辑、真实替换需求或独立测试价值；不为一次调用建空层。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
-- 持久化为本机 MySQL `laya_platform`，七张表：设计 §2 的 `users`、`user_sessions`、
+- 持久化为本机 MySQL `laya_platform`，八张表：设计 §2 的 `users`、`user_sessions`、
   `api_keys`、`pricing_rules`、`api_calls`、`usage_charges`，加上实现补齐的
-  `login_throttle`；DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
-  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`），不虚构未设计的表。`api_calls` 与
+  `login_throttle` 和 `platform_settings`；DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
+  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`），不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
 
@@ -63,7 +63,7 @@
 
 ## 测试与验证
 
-- 已有 `backend/tests` 标准库 unittest 密钥删除回归套件，`customer_service_test.py` 是 CLI 演示，不是测试。
+- 已有 `backend/tests` 标准库 unittest 密钥删除、管理员权限与品牌配置回归套件，`customer_service_test.py` 是 CLI 演示，不是测试。
 - 新功能覆盖正常、非法、边界输入及错误映射，用可复现命令记录验证。鉴权与多租户变更
   必须验证跨用户隔离、撤销即时生效与队列期间失效（拿到锁后重检），不能只测正常路径。
 - Bug 流程：复现 → 失败测试 → 根因 → 最小修复 → 相关验证 → 全量已有回归。
@@ -103,3 +103,11 @@
 - 一次修改聚焦一个目标，同步契约、测试和文档，不夹带清理。
 - Review 检查：范围、契约、阈值、模型加载、锁、错误日志、输入边界、验证证据。
 - 未明确要求不得提交；无 Git 时说明无法执行 diff/历史检查，不自动初始化。
+
+## 管理员权限与公开品牌
+
+- `users.is_admin` 是服务端角色事实，默认 false，注册/浏览器参数不能赋权；首个管理员必须由用户明确指定。
+- 管理员后台和 `/v1/admin/*` 依赖当前会话角色，普通用户 403、未登录接口 401；品牌写入要求 CSRF。
+- 管理员平台聚合使用独立查询；既有个人统计仍带 user_id 范围，禁止移除。
+- 公开品牌接口只输出名称、简介、Logo 地址/图片，不扩展为系统配置或敏感参数接口。
+- Logo 经 Pillow 校验、限大小/尺寸和重新编码，拒绝 SVG 与任意远程 URL；名称/简介只作为文本渲染。

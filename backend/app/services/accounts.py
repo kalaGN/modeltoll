@@ -50,10 +50,11 @@ class DisabledAccount(AuthError):
 class User:
     id: str
     email: str
+    is_admin: bool = False
 
     @property
-    def public(self) -> dict[str, str]:
-        return {"id": self.id, "email": self.email}
+    def public(self) -> dict[str, Any]:
+        return {"id": self.id, "email": self.email, "is_admin": self.is_admin}
 
 
 def utc_now() -> datetime.datetime:
@@ -145,12 +146,12 @@ def register_user(email: str, password: str) -> User:
 def _fetch_user(normalized: str) -> User:
     with session.cursor() as cur:
         row = _select_user_by_normalized(cur, normalized)
-    return User(id=row["id"], email=row["email"])
+    return User(id=row["id"], email=row["email"], is_admin=bool(row["is_admin"]))
 
 
 def _select_user_by_normalized(cur: Any, normalized: str) -> dict[str, Any] | None:
     cur.execute(
-        "SELECT id, email FROM users WHERE email_normalized = %s", (normalized,)
+        "SELECT id, email, is_admin FROM users WHERE email_normalized = %s", (normalized,)
     )
     return cur.fetchone()
 
@@ -219,13 +220,13 @@ def current_user(token: str) -> User | None:
         return None
     with session.cursor() as cur:
         cur.execute(
-            "SELECT u.id, u.email FROM user_sessions s JOIN users u ON u.id = s.user_id"
+            "SELECT u.id, u.email, u.is_admin FROM user_sessions s JOIN users u ON u.id = s.user_id"
             " WHERE s.token_hash = %s AND s.revoked_at IS NULL"
             " AND s.expires_at > UTC_TIMESTAMP(3) AND u.status = 'active'",
             (security.hash_secret(token),),
         )
         row = cur.fetchone()
-    return User(id=row["id"], email=row["email"]) if row else None
+    return User(id=row["id"], email=row["email"], is_admin=bool(row["is_admin"])) if row else None
 
 
 def logout(token: str) -> None:

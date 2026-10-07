@@ -183,6 +183,11 @@ async function initChrome() {
   try {
     const data = await api("/v1/auth/me");
     if (account) account.textContent = data.user.email;
+    if (data.user.is_admin && !document.body.dataset.page.startsWith("admin")) {
+      const entry = document.createElement("a");
+      entry.href = "/admin"; entry.className = "nav-link"; entry.textContent = "平台管理";
+      document.querySelector(".console-nav").appendChild(entry);
+    }
   } catch (error) {
     if (account) account.textContent = "未登录";
     return;
@@ -217,7 +222,7 @@ function niceMax(values) {
   return Math.ceil(peak / magnitude) * magnitude;
 }
 
-function chartFrame(svg, series, max, tickLabel) {
+function chartFrame(svg, series, max, tickLabel, inset = false) {
   svg.textContent = "";
   const { width, height, left, right, top, bottom } = CHART;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -233,14 +238,14 @@ function chartFrame(svg, series, max, tickLabel) {
     );
   }
   if (series.length <= 1) {
-    svg.appendChild(xLabel(series[0]?.date ?? "", left, height - 8, "middle"));
+    svg.appendChild(xLabel(series[0]?.date ?? "", inset ? left + plotWidth / 2 : left, height - 8, "middle"));
     return plotHeight;
   }
   const seen = new Set();
   const stride = Math.max(1, Math.ceil(series.length / 8));
   series.forEach((point, index) => {
     if (index % stride !== 0 && index !== series.length - 1) return;
-    const x = left + (plotWidth * index) / (series.length - 1);
+    const x = left + plotWidth * (inset ? (index + 0.5) / series.length : index / (series.length - 1));
     const anchor = index === 0 ? "start" : index === series.length - 1 ? "end" : "middle";
     const key = Math.round(x);
     if (seen.has(key)) return;
@@ -693,6 +698,9 @@ async function billingPage() {
 }
 
 const PAGES = { keys: keysPage, usage: usagePage, billing: billingPage };
+if (typeof adminOverviewPage === "function") {
+  PAGES.admin = adminOverviewPage; PAGES["admin-settings"] = adminSettingsPage;
+}
 
 document.addEventListener("DOMContentLoaded", async function () {
   await initChrome();

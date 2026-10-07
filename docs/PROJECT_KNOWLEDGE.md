@@ -50,7 +50,7 @@
 - 已安装包一致性可用 `uv pip check --python .venv/bin/python --cache-dir .uv-cache`。
 - 数据库：本机 MySQL 9.6.0，库 `laya_platform`，专用账号 `laya_app@127.0.0.1`，
   表 `users`、`user_sessions`、`login_throttle`、`api_keys`、`pricing_rules`、
-  `api_calls`、`usage_charges`，DDL 与回滚在 `backend/migrations/`（0001/0002/0003/0004）。
+  `api_calls`、`usage_charges`、`platform_settings`，DDL 与回滚在 `backend/migrations/`（0001/0002/0003/0004/0005/0006）。
   `pricing_rules` 有 `v1` 种子规则（¥1 / 1,000,000 输入 Token，CNY，
   计费策略 `succeeded_only_v1`），历史调用固定其 `pricing_rule_id`。
   未见缓存服务、MQ、搜索、对象存储或迁移框架。凭据在根目录 `.env`（已忽略）。
@@ -59,7 +59,7 @@
 - 未见 Docker、Kubernetes、反向代理、进程管理配置或 CI；运行方式是终端进程。
 - Git 于 2026-10-02 初始化；`.gitignore` 排除虚拟环境、模型/工具缓存、IDE、字节码、
   日志、本机密钥、`node_modules/` 与 `frontend/dist/`。团队分支策略待确认。
-- 已有 `backend/tests/test_api_key_deletion.py` 标准库 unittest 删除回归测试；客服文件名含 test 但运行的是 CLI 推理。
+- 已有 `backend/tests/test_api_key_deletion.py`、`test_admin.py` 标准库 unittest 回归测试；客服文件名含 test 但运行的是 CLI 推理。
 - 未安装 pytest、ruff、mypy、build，也没有 formatter、Lint、覆盖率配置。
 
 ## 架构与生命周期
@@ -181,7 +181,7 @@ P1 表示涉及未来对外暴露、资源耗尽或明显验证缺口；P2 为�
 | P1 | `accepted`/`running` 遗留行只作为可恢复记录，没有启动时收敛流程 | 进程被强杀后统计会长期显示“进行中” | 设计超时扫描把遗留行置为 `interrupted`，保持不计费 |
 | P1 | inference_lock 无排队截止/请求级推理超时 | 并发请求占线程排队，超时客户端不代表推理取消 | 明确队列上限、超时和取消策略并验证 |
 | P1 | 仅字段字符校验，无请求体总字节/深度边界 | 超大或深嵌套 JSON 在校验前消耗资源 | 评估服务/代理身体积限制及边界样本 |
-| P1 | 自动化测试目前仅覆盖密钥删除，登录与推理均靠本机端到端命令验证 | 契约、阈值、限速和错误分支易回归 | 后续变更同步 Unit/契约/集成测试 |
+| P1 | 自动化测试目前覆盖密钥删除、管理员权限与品牌配置，登录与推理均靠本机端到端命令验证 | 契约、阈值、限速和错误分支易回归 | 后续变更同步 Unit/契约/集成测试 |
 | ~~P1~~ 已收敛 | 本机三张表曾由原型 DDL 先建，迁移用 `IF NOT EXISTS` 不补差异 | 2026-10-02 已用两条新增型 `ALTER TABLE` 补上 `chk_users_status` 与 `idx_throttle_locked`，未清空数据 | 新环境仍直接执行 `0001_auth.sql`；结构差异用 `init_db()` 与 `information_schema` 复核 |
 | P2 | requirements-api.txt 非完整依赖，未锁版本 | 新环境不能仅靠此文件完整复现模型服务 | 明确完整依赖与锁定策略后再修改配置 |
 | P2 | 已初始化 Git 并添加忽略规则；缓存和 IDE 目录仍在根目录 | 手工强制添加仍可能误跟踪本机文件 | 每次提交前审查暂存清单，避免 git add -f |
@@ -278,3 +278,20 @@ SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字
 - 待确认：Git 协作策略、完整依赖与模型 revision、业务验收、部署目标、
   性能/SLO、测试工具及简单任务阈值；会话有效期、限速阈值、密码规则、
   金额展示精度、统计时区、失败/超时计费策略与分页上限仍为本次采用值，未经产品确认。
+
+## 2026-10-07 管理员后台与品牌配置
+
+新增 `users.is_admin`，默认 false；accounts.User.public 新增布尔角色字段；current_user 每次 JOIN users
+读取当前角色。管理员登录和根路由进入 /admin，普通账号进入 /keys；/admin/settings 是品牌配置页。
+页面与平台接口都校验管理员身份，管理写操作要求 CSRF；原个人统计范围不变。
+0005/0006 迁移在本机 MySQL 重复执行通过，迁移执行后既有用户保持普通角色；随后已按用户明确指定将首个账号设为管理员并验证，未修改其它账号。
+平台存量指标和窗口调用/费用、UTC 日趋势由 services/platform.py 在只读事务中汇总；窗口最多 366 天。
+平台配置为单行 MySQL 表，公开接口只读取三个品牌字段。名称、简介以 textContent 显示；Logo 限 2 MB、
+4096px，Pillow 12.3.0 重新编码并缩放到最多 512px PNG，去除元数据，不增加磁盘上传目录。
+
+验证：标准库 unittest 26 项通过（包括既有删除 9 项）；隔离 MySQL 回滚事务验证跨用户聚合、
+软删除历史保留、角色降级、品牌保存/保留/恢复和非法图片保存原子性，真实品牌及合成数据已回滚。
+浏览器使用同一 FastAPI 应用的隔离内存测试服务，不加载模型，验证两类角色登录落点、品牌保存/预览、
+恢复默认、失败保留输入、跨页品牌、390px 无溢出；HTTP 测试验证普通账号后台 403。
+Pillow 依赖安装后 uv pip check 检查 50 包兼容；前端构建通过，未配置 Lint/类型检查。
+当前 8000 服务仍加载旧后端，需用户重启已有 run-api；未终止其它会话启动的进程。

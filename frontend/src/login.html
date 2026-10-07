@@ -74,7 +74,7 @@
         完整 API Key 仅在创建时展示一次。
       </p>
       <footer class="mt-12 text-center text-[12.5px] text-slate-400">
-        Laya &copy; 2026. 保留所有权利。
+        <span data-platform-name>Laya</span> &copy; 2026. 保留所有权利。
       </footer>
     </div>
   </section>
@@ -171,7 +171,7 @@
         show("error", message || "请求失败，请稍后重试。");
         return;
       }
-      location.href = mode ? "/login?registered=1" : "/keys";
+      location.href = mode ? "/login?registered=1" : (data.user.is_admin ? "/admin" : "/keys");
     } catch (error) {
       submit.disabled = false;
       submit.textContent = mode ? "注册" : "登录";
@@ -179,5 +179,6 @@
     }
   });
 </script>
+<script src="/assets/branding.js"></script>
 </body>
 </html>

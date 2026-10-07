@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
 from app.core import config, security
 from app.services import accounts, api_keys
@@ -55,3 +55,12 @@ def issue_csrf_cookie(response, token: str) -> None:
         samesite="lax",
         secure=False,
     )
+
+
+def require_admin(user: accounts.User = Depends(require_user)) -> accounts.User:
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "admin_required", "message": "需要管理员权限"},
+        )
+    return user

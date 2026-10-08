@@ -70,6 +70,7 @@ def analyze(
     request: Request,
     principal: api_keys.Principal = Depends(require_api_key),
 ):
+    _require_local_router(request)
     call = inference.begin(ANALYZE_ENDPOINT, principal, model_runtime.MODEL_NAME)
     with model_runtime.inference_lock:
         _key_revoked(call, principal)
@@ -90,6 +91,7 @@ def predict(
     request: Request,
     principal: api_keys.Principal = Depends(require_api_key),
 ):
+    _require_local_router(request)
     questions = {key: value.model_dump(exclude_none=True) for key, value in body.questions.items()}
     call = inference.begin(PREDICT_ENDPOINT, principal, model_runtime.MODEL_NAME)
     with model_runtime.inference_lock:
@@ -105,3 +107,8 @@ def predict(
             _fail(call, "inference_error", 500, "模型推理失败，请查看服务日志")
     _settle(call, result.get("usage", {}))
     return JSONResponse(result, headers={"X-Request-Id": call.id})
+
+
+def _require_local_router(request: Request) -> None:
+    if getattr(request.app.state, 'router', None) is None:
+        raise HTTPException(503, detail={'code': 'local_model_disabled', 'message': '当前模式未加载本地 Laya 模型'})

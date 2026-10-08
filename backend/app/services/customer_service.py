@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from laya.presets import triage_questions
+from app.core import config
 
-from app.services.model_runtime import Router
+if TYPE_CHECKING:
+    from laya import Router
 
 INTENT_NAMES = {
     "refund": "退款/重复扣款",
@@ -42,7 +43,10 @@ def analyse_with_usage(
     message: str, device: str = "mps", router: Router | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """客服分析同时返回原生 usage：接口响应保持原样，但计量必须能拿到用量。"""
+    config.configure_model_cache()
+    from laya.presets import triage_questions
     if router is None:
+        from laya import Router
         router = Router(device=device, default="multilingual")
     result = router.predict(
         {"message": message},

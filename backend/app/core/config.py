@@ -102,3 +102,10 @@ def laya_device() -> str:
 def configure_model_cache() -> None:
     # Laya 在导入时读取 HF_HOME，必须在加载模型前设置且保持离线。
     os.environ.setdefault("HF_HOME", str(PROJECT_DIR / ".hf-cache"))
+
+
+def laya_runtime() -> str:
+    runtime = os.environ.get('LAYA_RUNTIME', 'local')
+    if runtime not in {'local', 'external'}:
+        raise ValueError('LAYA_RUNTIME 只支持 local 或 external')
+    return runtime

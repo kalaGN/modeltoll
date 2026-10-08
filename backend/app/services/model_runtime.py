@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import threading
+from typing import TYPE_CHECKING
 
 from app.core import config
 
 config.configure_model_cache()
 
-from laya import Router  # noqa: E402  (HF_HOME 必须先设置)
+if TYPE_CHECKING:
+    from laya import Router
 
 MODEL_NAME = "multilingual"
 inference_lock = threading.Lock()
 
 
 def build_router(device: str) -> Router:
+    from laya import Router
     router = Router(device=device, default=MODEL_NAME, max_loaded=1)
     router.load(MODEL_NAME)
     return router

@@ -550,7 +550,7 @@ async function usagePage() {
   resetPages(state);
 
   const endpointSelect = $("endpoint-filter");
-  [["", "全部接口"], ["/v1/predict", "/v1/predict"], ["/v1/customer-service/analyze", "/v1/customer-service/analyze"]]
+  [["", "全部接口"], ["/v1/predict", "/v1/predict"], ["/v1/customer-service/analyze", "/v1/customer-service/analyze"], ["/v1/chat/completions", "/v1/chat/completions"]]
     .forEach(([value, label]) => {
       const option = document.createElement("option");
       option.value = value;

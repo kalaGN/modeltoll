@@ -21,5 +21,22 @@
 <div class="settings-layout"><section class="console-panel"><h2>品牌信息</h2><form id="settings-form" class="settings-form"><label for="platform-name">平台名称<input id="platform-name" class="settings-input" maxlength="60" required placeholder="请输入平台名称"></label><label for="platform-description">平台简介<textarea id="platform-description" class="settings-input" maxlength="200" rows="3" placeholder="简短介绍你的平台"></textarea></label>
 <div><label for="platform-logo">平台 Logo</label><div class="logo-picker"><div id="current-logo" class="logo-thumbnail" aria-label="当前 Logo"><span>默认</span><img id="logo-thumbnail" hidden alt="Logo 预览"></div><div><input id="platform-logo" type="file" accept="image/png,image/jpeg,image/webp"><p class="settings-help">PNG、JPEG、WebP，最大 2 MB，尺寸不超过 4096 × 4096。</p><button id="reset-logo" type="button" class="button-secondary">恢复默认 Logo</button></div></div></div>
 <p id="settings-status" role="status" class="settings-help">正在读取配置…</p><div class="settings-actions"><button id="save-settings" type="submit" class="button-primary" disabled>保存配置</button></div></form></section>
-<section class="console-panel brand-preview-panel"><h2>品牌预览</h2><p class="settings-help">仅预览未保存的修改。</p><div class="brand-preview"><span id="preview-default" class="preview-default">◆</span><img id="preview-logo" hidden alt="品牌 Logo 预览"><strong id="preview-name">Laya</strong><p id="preview-description">模型 API 平台</p></div><p class="settings-help">保存后，刷新登录页及各控制台即可看到新的品牌。</p></section></div></main></div></div>
+<section class="console-panel brand-preview-panel"><h2>品牌预览</h2><p class="settings-help">仅预览未保存的修改。</p><div class="brand-preview"><span id="preview-default" class="preview-default">◆</span><img id="preview-logo" hidden alt="品牌 Logo 预览"><strong id="preview-name">Laya</strong><p id="preview-description">模型 API 平台</p></div><p class="settings-help">保存后，刷新登录页及各控制台即可看到新的品牌。</p></section></div>
+<section class="console-panel mt-6">
+  <h2>自部署模型连接</h2>
+  <p class="settings-help">连接已部署的 OpenAI 兼容服务。当前支持文字消息、单模型、非流式；本地 Laya 分类接口保持独立。</p>
+  <form id="connection-form" class="settings-form">
+    <label for="model-base-url">上游 Base URL<input id="model-base-url" class="settings-input" type="url" required maxlength="512" placeholder="http://127.0.0.1:11434/v1"></label>
+    <label for="model-name">模型名称<input id="model-name" class="settings-input" required maxlength="64" placeholder="qwen3.5:9b"></label>
+    <label for="model-timeout">网络读超时（秒）<input id="model-timeout" class="settings-input" type="number" min="1" max="300" value="120" required></label>
+    <label for="model-enabled" class="connection-toggle"><input id="model-enabled" type="checkbox"> 启用聊天 API</label>
+    <p id="model-runtime" class="settings-help"></p>
+    <p id="model-credential" class="settings-help"></p>
+    <p class="settings-help">凭据由服务器 UPSTREAM_API_KEY 环境变量提供，不在浏览器配置。价格为 ¥1 / 百万输入 Token；输出 Token 暂不收费。测试连接只读取模型列表，不生成内容。</p>
+    <p id="connection-status" class="settings-help" role="status">正在读取连接…</p>
+    <div id="connection-error" class="modal-error hidden" role="alert"></div>
+    <div class="flex flex-wrap gap-3"><button id="test-connection" class="button-secondary" type="button" disabled>测试连接</button><button id="save-connection" class="button-primary" type="submit" disabled>保存模型连接</button></div>
+  </form>
+</section>
+</main></div></div>
 <script src="/assets/branding.js"></script><script src="/assets/admin.js"></script><script src="/assets/app.js"></script></body></html>

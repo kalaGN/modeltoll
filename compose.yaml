@@ -1,0 +1,60 @@
+services:
+  app:
+    build:
+      context: .
+    image: ${LAYA_IMAGE:-laya-platform:local}
+    restart: unless-stopped
+    init: true
+    environment:
+      LAYA_RUNTIME: external
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in your env file}
+      MYSQL_USER: ${MYSQL_USER:?Set a non-root MYSQL_USER in your env file}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in your env file}
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 40s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in your env file}
+      MYSQL_USER: ${MYSQL_USER:?Set a non-root MYSQL_USER in your env file}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in your env file}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in your env file}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP --host=127.0.0.1 --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}" --batch --execute="SELECT 1" >/dev/null 2>&1'
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 30
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  mysql_data:

@@ -16,7 +16,9 @@
   `backend/app/services/customer_service.py`；并非自动化测试。
 - `run-api` / `run-laya`：启动脚本，`run-api` 以 `PYTHONPATH=backend` 启动 `app.main:app`；
   `requirements-api.txt` 声明 API、鉴权与数据库驱动依赖。
-- `.env`：本机 MySQL 凭据，已被 Git 忽略；缺失时启动即失败。
+- `backend/app/manage.py`：显式迁移与首个管理员 CLI，不接受密码命令行参数，不自动提升已有普通用户权限。
+- `Dockerfile` / `compose.yaml`：仅 external 模式的容器部署，默认宿主 loopback、独立 MySQL；私有配置用 `.env.deploy`，不可覆盖本机 `.env`。
+- `.env`：本机 MySQL 凭据，已被 Git 忽略；未配置数据库凭据时启动失败，容器由环境变量提供。
 
 ## 渐进加载
 
@@ -42,7 +44,7 @@
 - 修改前确认范围，读取相关源码和契约，检查版本控制及工作区状态。
 - 简单任务最小修改；契约、依赖、架构等复杂任务先写 Spec。
 - 修改后执行可用检查，更新相关文档，报告未验证项与风险。
-- 当前没有测试套件、Lint、类型检查及构建配置，不得声称这些检查通过。
+- 当前有 `backend/tests` unittest 回归和前端构建；未配置 Lint 与类型检查，不得声称这些检查通过。
 
 ## 当前可执行命令
 

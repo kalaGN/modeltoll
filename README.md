@@ -22,7 +22,62 @@ MySQL 9.6.0、Node 22.22.3（2026-10-02 本机快照）。`requirements-api.txt`
 `customer_service_test.py` 仍是入口脚本。详见
 [任务文档](docs/20261002-Laya平台-任务.md)。
 
-## 前置条件
+## 容器部署（仅外部模型模式）
+
+此方案运行管理平台和独立 MySQL，不下载模型，也不占用本机 MySQL。
+默认仅绑定 `127.0.0.1`；不是公网部署方案。需要 Docker Engine 与 Compose v2。
+前端在镜像构建时自动生成，不需要宿主安装 Node/Python；容器非 root、单 worker。
+
+1. 复制 `.env.example` 为私有 `.env.deploy`，填写自己的数据库密码和 root 密码（均不得为空），
+   按需设置 `APP_PORT=8012` 避免与现有 8000 服务冲突。不要覆盖本机已有 `.env`。
+2. 启动及初始化：
+
+```bash
+docker compose --env-file .env.deploy up -d --build --wait --wait-timeout 180
+docker compose --env-file .env.deploy exec app python -m app.manage migrate
+docker compose --env-file .env.deploy exec app python -m app.manage init-admin --email YOUR_EMAIL
+```
+
+最后一步交互输入并确认密码；不要把密码放进命令参数或 shell 历史。
+非交互场景只能显式 `--password-stdin`（配合 `exec -T`），由可信秘密提供器输送一行口令。
+首次创建要求当前数据库没有管理员；同邮箱已是启用管理员时重复执行不修改密码。
+既有普通用户、停用管理员或已存在其他管理员都会拒绝，不会自动升权/激活。
+显式 CLI 迁移便于提前验证，启动自动幂等迁移仍保持兼容。
+
+3. 打开 `http://127.0.0.1:APP_PORT/login` 登录，再到平台配置填写上游。
+   容器的 `127.0.0.1` 指容器自身；宿主 Ollama 通常使用
+   `http://host.docker.internal:11434/v1`（仍需验证宿主服务可达）。上游凭据放 `.env.deploy`
+   的 `UPSTREAM_API_KEY`，带凭据的非 loopback 上游必须 HTTPS，不降低 TLS 保护。
+
+```bash
+docker compose --env-file .env.deploy ps
+docker compose --env-file .env.deploy logs --tail 100 app
+docker compose --env-file .env.deploy down  # 停服务，保留数据库卷
+```
+
+不要对真实部署执行 `down -v`。已有卷的数据库凭据/账号不会因修改环境变量自动重建，
+修改前先备份并按数据库流程变更；健康检查使用应用账号认证目标库。依赖健康顺序按
+[Compose 官方说明](https://docs.docker.com/compose/how-tos/startup-order/)配置。
+`.dockerignore` 使用源码白名单，不发送 `.env`、Git、虚拟环境、缓存或本地模型到构建器。
+Python 依赖目前仍是版本范围，不是完整锁定构建；可用 `LAYA_IMAGE` 保存版本化镜像标签，
+升级前备份数据库并保留旧镜像，回滚时选择旧标签，不自动删除数据。
+
+本机 CLI（使用现有 .venv/.env；仅明确需要初始化当前数据库时运行）：
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m app.manage migrate
+PYTHONPATH=backend .venv/bin/python -m app.manage init-admin --email YOUR_EMAIL
+```
+
+独立容器 E2E 验证会创建随机项目和测试专用卷，结束时删除该项目的测试数据，**不要用于真实部署**：
+
+```bash
+docker build -t laya-platform:p0-2-smoke .
+LAYA_TEST_COMPOSE=1 LAYA_TEST_IMAGE=laya-platform:p0-2-smoke \
+  PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -p test_deployment_runtime.py -v
+```
+
+## 本机前置条件
 
 登录功能需要本机 MySQL。在项目根目录创建 `.env`（已被 Git 忽略）：
 
@@ -36,8 +91,52 @@ MYSQL_DATABASE=laya_platform
 
 表结构在服务启动时按 `backend/migrations/` 的 `0001_auth.sql`、`0002_api_keys.sql`、
 `0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、
-`0006_platform_settings.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
+`0006_platform_settings.sql`、`0007_model_gateway.sql` 顺序自动创建（幂等，含 `v1` 价格规则种子）。迁移账号需要
 `CREATE`/`INDEX`/`REFERENCES` 与 `ALTER` 权限；DDL 与回滚脚本成对提供。
+
+## 自部署模型连接（P0 第一批）
+
+管理员进入 `/admin/settings`，填写上游 Base URL（必须以 `/v1` 结尾）、模型名及超时，
+先测试模型列表，再勾选启用并保存。例：Ollama `http://127.0.0.1:11434/v1`。
+模型必须先在上游部署；连接测试只证明模型列表可达，不证明模型支持聊天。
+上游要求认证时在服务器环境或 `.env` 配置 `UPSTREAM_API_KEY`；它不写入数据库，
+不返回浏览器。非 loopback 地址携带凭据必须用 HTTPS；不跟随 HTTP 重定向。
+
+默认仍加载本地 Laya。只接入外部模型、不加载本地权重：
+
+```bash
+LAYA_RUNTIME=external zsh run-api
+```
+
+本地 Laya 分类/客服接口在 external 模式返回 503；使用默认 `local` 模式可同时使用两种接口。
+新迁移在启动时执行，已有后端进程需自行重启，不要与旧服务重复占用 8000。
+
+使用平台申请的 Key，不是上游 Key：
+
+```bash
+curl http://127.0.0.1:8000/v1/models -H "Authorization: Bearer $LAYA_API_KEY"
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer $LAYA_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"<管理员配置的模型名>","messages":[{"role":"user","content":"你好"}],"stream":false,"max_tokens":128}'
+```
+
+首版只支持 `model/messages/stream=false/max_tokens/temperature/top_p`，消息为 system/user/assistant 文字。
+不支持流式、工具、图片、Responses API，未知字段 422；并非完整 OpenAI API 实现。
+请求限 256 KB、文字总量 64000 字符、上游响应限 2 MB；队列等待 30 秒。
+超时 504、上游错误 502、未配置 503、模型不匹配 404；无自动重试。
+HTTPX 超时针对每次网络操作，不能理解为生成总耗时上限。
+费用仅依据有效的上游 `usage.prompt_tokens`，输出 Token 只记录，不收费。
+成功响应必须在账务提交后返回；缺用量失败为 pending，不伪造零 Token。
+
+### 可执行验证
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
+# 已迁移的本机 MySQL；合成账号、Key、配置、价格和费用在事务结束时全部回滚：
+LAYA_TEST_MYSQL=1 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -p test_gateway_mysql.py
+```
+
+后续 P0 项目见 [自部署任务清单](docs/20261008-自部署平台-任务.md)。
 
 ## 构建前端
 

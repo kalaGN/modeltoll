@@ -1,0 +1,20 @@
+# Docker only receives declared source files; never send local secrets/caches.
+**
+!Dockerfile
+!requirements-api.txt
+!backend/
+!backend/app/
+!backend/app/**
+!backend/migrations/
+!backend/migrations/**
+!frontend/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/src/
+!frontend/src/**
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

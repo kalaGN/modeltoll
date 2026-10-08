@@ -295,3 +295,21 @@ SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字
 恢复默认、失败保留输入、跨页品牌、390px 无溢出；HTTP 测试验证普通账号后台 403。
 Pillow 依赖安装后 uv pip check 检查 50 包兼容；前端构建通过，未配置 Lint/类型检查。
 当前 8000 服务仍加载旧后端，需用户重启已有 run-api；未终止其它会话启动的进程。
+
+## 2026-10-08 自部署模型连接（P0-1）
+
+`model_connection`（迁移 0007）保存单个管理员固定的上游 URL、模型、启用状态与网络超时；凭据仅由 `UPSTREAM_API_KEY` 环境或 .env 提供，不进数据库。
+管理员 `/admin/settings` 已增加连接表单，读取和保存 `/v1/admin/model-connection`，测试 `/v1/admin/model-connection/test`；写请求要求角色与 CSRF。
+用户用平台 Key 调用 `/v1/models` 和 `/v1/chat/completions`。首版仅文字、单模型、非流式，未知字段拒绝。
+以实际 `prompt_tokens` 计费，输出只记录；配置首次保存建立该模型 ¥1/百万输入 Token 价格，不覆盖既有价格。个人统计新增聊天接口筛选。
+HTTPX 不重试、不重定向、不读取代理环境；上游错误正文不透传，返回 JSON 限 2 MB，入站 JSON 限 256 KB；共享当前单进程推理锁，聊天等待锁 30 秒。
+默认 local 行为保留，`LAYA_RUNTIME=external` 不导入/加载 Laya，本地预测与客服返回 503。外部服务不由平台下载安装。
+0007 本机迁移只创建空表，真实 MySQL 价格/调用/费用链路使用合成数据并回滚；本机 Ollama 连接测试通过，仅有 embedding 模型，真实聊天生成未验证。
+浏览器后台交互以隔离模拟服务验证，不修改生产配置；证据和剩余 P0 工作见 [自部署任务](20261008-自部署平台-任务.md)。
+
+## 2026-10-08 部署与首个管理员初始化（P0-2）
+
+Dockerfile 多阶段构建前端与纯外部模型 Python API，不安装 Laya/PyTorch，app UID 10001；Compose 提供独立 MySQL 8.4、持久卷和应用账号健康检查，app 宿主端口固定 loopback、默认8000（APP_PORT可覆盖），无数据库宿主端口。`.env.example` 密码空值，使用私有 `.env.deploy`，不覆盖现有本机.env；`.dockerignore` 白名单只发送源码。默认仍支持本机 local 运行，容器不宣称支持 MPS 或公网。
+`app.manage migrate` 显式执行既有幂等迁移；`init-admin --email` 必须先迁移，只在数据库未有管理员时创建指定邮箱。数据库命名锁、事务和 Argon2id；重复启用管理员同邮箱仅 no-op，普通用户/停用管理员/其他已有管理员拒绝，无自动重置、升权或激活。
+口令仅 getpass确认或显式 `--password-stdin` 一行输入；非TTY默认拒绝，错误不会输出密码参数或数据库异常原文。
+真实Docker镜像构建和独立MySQL容器E2E通过，包括双CLI竞态、幂等口令、权限和平台Key调用失败不计费；合成测试数据库卷已清理，实际本机管理员未变。标准库suite默认72通过、2 opt-in跳过；可复现命令和证据见任务文档。

@@ -32,10 +32,10 @@
 - 新抽象必须有重复逻辑、真实替换需求或独立测试价值；不为一次调用建空层。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
-- 持久化为本机 MySQL `laya_platform`，八张表：设计 §2 的 `users`、`user_sessions`、
+- 持久化为 MySQL `laya_platform`，当前九张表：设计 §2 的 `users`、`user_sessions`、
   `api_keys`、`pricing_rules`、`api_calls`、`usage_charges`，加上实现补齐的
-  `login_throttle` 和 `platform_settings`；DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
-  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`），不虚构未设计的表。`api_calls` 与
+  `login_throttle` 和 `platform_settings`；2026-10-08 新增第九张表 `model_connection`，只存管理员固定上游的非秘密配置。DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
+  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`），不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
 
@@ -107,6 +107,8 @@
 ## 管理员权限与公开品牌
 
 - `users.is_admin` 是服务端角色事实，默认 false，注册/浏览器参数不能赋权；首个管理员必须由用户明确指定。
+- 首个管理员运维入口 `python -m app.manage init-admin --email` 使用指定邮箱；不隐式提升普通用户、不重新激活停用账号、不修改已有密码，禁止将口令传入命令行参数。
+- 容器默认只绑定宿主 loopback；真实部署不得使用 `docker compose down -v`。容器测试只有显式 opt-in，随机隔离项目的合成数据才可自动清理。
 - 管理员后台和 `/v1/admin/*` 依赖当前会话角色，普通用户 403、未登录接口 401；品牌写入要求 CSRF。
 - 管理员平台聚合使用独立查询；既有个人统计仍带 user_id 范围，禁止移除。
 - 公开品牌接口只输出名称、简介、Logo 地址/图片，不扩展为系统配置或敏感参数接口。

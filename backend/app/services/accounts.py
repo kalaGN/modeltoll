@@ -182,19 +182,29 @@ def login(email: str, password: str, source: str) -> str:
             outcome = InvalidCredentials()
         elif _locked(cur, key):
             outcome = AccountLocked()
-        elif row["status"] != "active":
-            outcome = DisabledAccount()
         else:
+            # Serialize session issuance with administrator status changes.
+            # Password verification remains outside the transaction, but neither
+            # that old status nor an old password hash can authorize a session.
             cur.execute(
-                "DELETE FROM login_throttle WHERE throttle_key = %s", (key,)
-            )
-            cur.execute(
-                "UPDATE users SET last_login_at = UTC_TIMESTAMP(3),"
-                " updated_at = UTC_TIMESTAMP(3) WHERE id = %s",
+                "SELECT id, password_hash, status FROM users WHERE id = %s FOR UPDATE",
                 (row["id"],),
             )
-            token = _create_session(cur, row["id"])
-            outcome = None
+            current = cur.fetchone()
+            if current is None or current["password_hash"] != row["password_hash"]:
+                _record_failure(cur, key)
+                outcome = InvalidCredentials()
+            elif current["status"] != "active":
+                outcome = DisabledAccount()
+            else:
+                cur.execute("DELETE FROM login_throttle WHERE throttle_key = %s", (key,))
+                cur.execute(
+                    "UPDATE users SET last_login_at = UTC_TIMESTAMP(3),"
+                    " updated_at = UTC_TIMESTAMP(3) WHERE id = %s",
+                    (row["id"],),
+                )
+                token = _create_session(cur, row["id"])
+                outcome = None
     if outcome is not None:
         raise outcome
     return token

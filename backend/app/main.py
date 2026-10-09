@@ -17,6 +17,7 @@ from app.api.v1 import admin as admin_routes
 from app.api.v1 import inference as inference_routes
 from app.api.v1 import statistics as statistics_routes
 from app.api.v1 import gateway as gateway_routes
+from app.api.v1 import admin_management as admin_management_routes
 from app.core import config, security
 from app.db import models
 from app.services import model_runtime
@@ -52,6 +53,7 @@ app.include_router(api_keys_routes.router)
 app.include_router(statistics_routes.router)
 app.include_router(inference_routes.router)
 app.include_router(gateway_routes.router)
+app.include_router(admin_management_routes.router)
 
 
 @app.exception_handler(HTTPException)
@@ -135,12 +137,17 @@ def health(request: Request):
 
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/settings", include_in_schema=False)
+@app.get("/admin/users", include_in_schema=False)
 def admin_page(request: Request):
     user = dependencies.current_user(request)
     if user is None:
         return RedirectResponse("/login", status_code=302)
     dependencies.require_admin(user)
-    name = "admin-settings.html" if request.url.path.endswith("/settings") else "admin.html"
+    name = {
+        "/admin": "admin.html",
+        "/admin/settings": "admin-settings.html",
+        "/admin/users": "admin-users.html",
+    }[request.url.path]
     response = _with_csrf(request, _dist_page(name))
     response.headers["Cache-Control"] = "no-store"
     return response

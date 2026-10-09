@@ -21,7 +21,7 @@
 
 - 平台目标为邮箱密码登录、API Key 管理与 Token 计费；当前已实现登录、注册、会话、
   登录限速、API Key 生命周期、Bearer 推理鉴权、调用记录、Decimal 计费、统计查询，
-  以及登录/Key 管理/调用统计/费用统计四个个人页面与管理员总览/配置页面。失败与超时调用的计费规则仍待产品确认。
+  以及登录/Key 管理/调用统计/费用统计四个个人页面与管理员总览/配置/用户管理页面。失败与超时调用的计费规则仍待产品确认。
 - 登录写操作必须带 Double-Submit CSRF，会话使用 HttpOnly Cookie；对外暴露仍待安全 Spec。
 - 明确需求要求的范围才扩展；不主动引入消息队列、缓存服务或设计未覆盖的数据层。
 - 代码按 [架构设计](20261002-Laya平台-设计.md) 组织：后端在 `backend/app`
@@ -32,10 +32,10 @@
 - 新抽象必须有重复逻辑、真实替换需求或独立测试价值；不为一次调用建空层。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
-- 持久化为 MySQL `laya_platform`，当前九张表：设计 §2 的 `users`、`user_sessions`、
+- 持久化为 MySQL `laya_platform`，当前十张表：设计 §2 的 `users`、`user_sessions`、
   `api_keys`、`pricing_rules`、`api_calls`、`usage_charges`，加上实现补齐的
-  `login_throttle` 和 `platform_settings`；2026-10-08 新增第九张表 `model_connection`，只存管理员固定上游的非秘密配置。DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
-  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`），不虚构未设计的表。`api_calls` 与
+  `login_throttle` 和 `platform_settings`；`model_connection` 只存管理员固定上游的非秘密配置，`admin_audit_events` 保存管理操作审计。DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
+  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`、`0008_admin_audit.sql`），不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
 
@@ -111,5 +111,7 @@
 - 容器默认只绑定宿主 loopback；真实部署不得使用 `docker compose down -v`。容器测试只有显式 opt-in，随机隔离项目的合成数据才可自动清理。
 - 管理员后台和 `/v1/admin/*` 依赖当前会话角色，普通用户 403、未登录接口 401；品牌写入要求 CSRF。
 - 管理员平台聚合使用独立查询；既有个人统计仍带 user_id 范围，禁止移除。
+- `/admin/users` 只管理普通用户状态，不修改管理员角色或状态；状态/Key实际变更与审计共同提交，重复操作不写新审计。停用同时撤销会话，登录发放会话前锁定复核当前状态。
+- 管理员 Key 列表含软删除历史，仅输出脱敏标识；审计原因不存密码、完整 Key 或客户原文，历史调用与费用不因管理操作删除。
 - 公开品牌接口只输出名称、简介、Logo 地址/图片，不扩展为系统配置或敏感参数接口。
 - Logo 经 Pillow 校验、限大小/尺寸和重新编码，拒绝 SVG 与任意远程 URL；名称/简介只作为文本渲染。

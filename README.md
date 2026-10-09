@@ -255,8 +255,8 @@ curl http://127.0.0.1:8000/v1/predict \
 `users.is_admin` 默认为 0，注册不能升权。登录、注册和 `/v1/auth/me` 的 `user` 新增布尔字段
 `is_admin`；管理员登录或访问根路径进入 `/admin`，普通账号进入 `/keys`。
 管理员可在 `/admin/settings` 设置名称、简介、Logo，在个人控制台可返回平台管理。
-首次使用前须明确指定已注册的管理员账号，再由有权限的数据库操作人员按邮箱将
-`users.is_admin` 设为 1；本机已按用户明确指定完成首个管理员赋权，管理员身份不由迁移自动设置。角色每次从数据库读取，降权后原会话
+新部署通过上文 `app.manage init-admin --email` 创建首个管理员，不会提升已注册普通用户。
+管理员身份不由迁移自动设置。角色每次从数据库读取，降权后原会话
 的下一次管理请求即被拒绝。
 
 - `GET /v1/admin/overview?from=&to=`：管理员会话，最多 366 天，返回平台存量指标和 UTC 日趋势。
@@ -272,3 +272,24 @@ curl http://127.0.0.1:8000/v1/predict \
 `platform_settings` 中，保存成功后刷新各页面读取新品牌；浏览器不负责存储全局配置。
 迁移/回滚脚本成对提供，先回滚代码再回滚结构；回滚配置表会丢失品牌定制，不自动执行。
 已有服务须重新加载后端代码才能使用新增接口，不要重复启动模型进程。
+
+### 用户与 Key 管理（P0-3）
+
+管理员进入 `/admin/users`，按邮箱或状态检索用户，查看该用户的 Key 与管理操作审计。
+停用/启用普通用户、撤销 Key 都须填写 1–200 字原因；请勿输入密码、密钥或客户原文。
+管理员账号不能在此停用；不提供角色修改、密码重置或物理删除。
+
+停用会撤销现有登录会话，并使该账号的 Bearer Key 无法使用。重新启用须重新登录；
+尚未撤销的 Key 恢复可用，已撤销 Key 不会恢复。历史调用与费用不删除；已开始的推理不强制取消。
+
+- `GET /v1/admin/users?q=&status=&page=1&limit=20`：用户检索与分页。
+- `PATCH /v1/admin/users/{user_id}/status`：JSON `{status,reason}`，status 为 active/disabled。
+- `GET /v1/admin/users/{user_id}/api-keys?page=1&limit=20`：含软删除 Key 的脱敏列表。
+- `POST /v1/admin/api-keys/{key_id}/revoke`：JSON `{reason}`，重复撤销无变更。
+- `GET /v1/admin/audit-events?page=1&limit=20`：操作者、目标、动作、前后状态、原因及 UTC 时间。
+
+以上只认管理员会话，写接口另需 `X-CSRF-Token` 与 CSRF Cookie 匹配。
+分页输出 `{code,items,page,limit,total,has_more}`，limit 最大100。详细字段见 OpenAPI 和
+[P0-3 设计](docs/20261008-自部署平台-设计.md)。迁移0008创建审计表，变更与审计在同一事务提交；
+审计写入失败时管理操作不生效。升级先备份数据库再迁移；回滚代码不会自动恢复账号或 Key，
+默认保留审计表，执行对应回滚 DDL 会删除审计记录，须先导出并人工确认。

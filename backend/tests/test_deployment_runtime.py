@@ -95,6 +95,107 @@ class DeploymentRuntimeTests(unittest.TestCase):
                 self.assertEqual(totals['calls_total'], 1)
                 self.assertEqual(totals['calls_failed'], 1)
                 self.assertEqual(totals['charged_amount_yuan'], '0')
+                user_id = client.get('/v1/auth/me').json()['user']['id']
+                key_id = key_result.json()['api_key']['id']
+                with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=15, trust_env=False) as admin:
+                    admin_csrf = admin.get('/v1/auth/csrf').json()['csrf_token']
+                    admin_headers = {'X-CSRF-Token': admin_csrf}
+                    login = admin.post('/v1/auth/login', headers=admin_headers,
+                                       json={'email': admin_email, 'password': password})
+                    self.assertEqual(login.status_code, 200)
+                    admin_id = login.json()['user']['id']
+                    self.assertEqual(admin.get('/admin/users').status_code, 200)
+                    self.assertEqual(client.get('/v1/admin/users').status_code, 403)
+                    self.assertEqual(admin.patch(f'/v1/admin/users/{user_id}/status',
+                                     json={'status': 'disabled', 'reason': '合成测试'}).status_code, 403)
+                    self.assertEqual(admin.patch(f'/v1/admin/users/{admin_id}/status', headers=admin_headers,
+                                     json={'status': 'disabled', 'reason': '保护边界测试'}).status_code, 409)
+                    users = admin.get('/v1/admin/users', params={'q': ordinary_email, 'limit': 1}).json()
+                    self.assertEqual(users['total'], 1)
+                    self.assertEqual(users['items'][0]['id'], user_id)
+                    self.assertNotIn('password_hash', users['items'][0])
+                    keys = admin.get(f'/v1/admin/users/{user_id}/api-keys').json()['items']
+                    self.assertEqual(keys[0]['id'], key_id)
+                    self.assertNotIn('key_hash', keys[0])
+                    self.assertNotIn('secret', keys[0])
+                    disabled = admin.patch(f'/v1/admin/users/{user_id}/status', headers=admin_headers,
+                                           json={'status': 'disabled', 'reason': '停用合成账号'})
+                    self.assertEqual(disabled.status_code, 200)
+                    self.assertTrue(disabled.json()['changed'])
+                    self.assertEqual(client.get('/v1/auth/me').status_code, 401)
+                    self.assertEqual(client.get('/v1/models', headers=bearer).status_code, 403)
+                    duplicate = admin.patch(f'/v1/admin/users/{user_id}/status', headers=admin_headers,
+                                            json={'status': 'disabled', 'reason': '重复停用'})
+                    self.assertFalse(duplicate.json()['changed'])
+                    enabled = admin.patch(f'/v1/admin/users/{user_id}/status', headers=admin_headers,
+                                          json={'status': 'active', 'reason': '重新启用'})
+                    self.assertEqual(enabled.status_code, 200)
+                    self.assertEqual(client.get('/v1/auth/me').status_code, 401)
+                    self.assertEqual(client.get('/v1/models', headers=bearer).status_code, 200)
+                    revoked = admin.post(f'/v1/admin/api-keys/{key_id}/revoke', headers=admin_headers,
+                                         json={'reason': '管理员撤销合成Key'})
+                    self.assertEqual(revoked.status_code, 200)
+                    self.assertTrue(revoked.json()['changed'])
+                    self.assertEqual(client.get('/v1/models', headers=bearer).status_code, 401)
+                    self.assertFalse(admin.post(f'/v1/admin/api-keys/{key_id}/revoke', headers=admin_headers,
+                                                json={'reason': '重复撤销'}).json()['changed'])
+                    audit = admin.get('/v1/admin/audit-events', params={'limit': 1}).json()
+                    self.assertEqual(audit['total'], 3)
+                    self.assertTrue(audit['has_more'])
+                    self.assertEqual(audit['items'][0]['action'], 'api_key.revoked')
+                    self.assertEqual(audit['items'][0]['target_key_id'], key_id)
+                    self.assertEqual(audit['items'][0]['actor_id'], admin_id)
+                self.assertEqual(client.post('/v1/auth/login', headers=headers,
+                                 json={'email': ordinary_email, 'password': password}).status_code, 200)
+                self.assertEqual(client.get('/v1/usage/summary').json()['totals'], totals)
+                historical = client.post('/v1/api-keys', headers=headers, json={'name': '历史软删除测试'}).json()['api_key']['id']
+                self.assertEqual(client.post(f'/v1/api-keys/{historical}/revoke', headers=headers,
+                                            json={}).status_code, 200)
+                self.assertEqual(client.delete(f'/v1/api-keys/{historical}', headers=headers).status_code, 200)
+                with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=15, trust_env=False) as admin:
+                    admin_headers = {'X-CSRF-Token': admin.get('/v1/auth/csrf').json()['csrf_token']}
+                    self.assertEqual(admin.post('/v1/auth/login', headers=admin_headers,
+                                     json={'email': admin_email, 'password': password}).status_code, 200)
+                    historical_keys = admin.get(f'/v1/admin/users/{user_id}/api-keys').json()['items']
+                    deleted_key = next(key for key in historical_keys if key['id'] == historical)
+                    self.assertEqual(deleted_key['status'], 'deleted')
+                    self.assertIsNotNone(deleted_key['deleted_at'])
+                    self.assertFalse(admin.post(f'/v1/admin/api-keys/{historical}/revoke', headers=admin_headers,
+                                                json={'reason': '已删除无变更'}).json()['changed'])
+                    self.assertEqual(admin.get('/v1/admin/audit-events').json()['total'], 3)
+                    rollback_key = client.post('/v1/api-keys', headers=headers,
+                                               json={'name': '真实回滚验证'}).json()
+                    rollback_bearer = {'Authorization': 'Bearer ' + rollback_key['secret']}
+                    rollback_id = rollback_key['api_key']['id']
+                    # MySQL binary logging otherwise requires SUPER to create
+                    # triggers. Relax only this disposable test DB instance.
+                    run('exec', '-T', 'db', 'sh', '-c',
+                        'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot '
+                        '-e "SET GLOBAL log_bin_trust_function_creators = 1"')
+                    # Test-only DB trigger forces the audit INSERT to fail. The
+                    # generated Compose database is disposable and isolated.
+                    run('exec', '-T', 'app', 'python', '-c',
+                        "from app.db import session\nwith session.cursor() as cur:\n"
+                        " cur.execute(\"CREATE TRIGGER smoke_audit_failure BEFORE INSERT ON admin_audit_events "
+                        "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic audit failure'\")")
+                    try:
+                        failed_status = admin.patch(f'/v1/admin/users/{user_id}/status', headers=admin_headers,
+                                                    json={'status': 'disabled', 'reason': '数据库回滚测试'})
+                        self.assertEqual(failed_status.status_code, 500)
+                        self.assertEqual(admin.get('/v1/admin/users', params={'q': ordinary_email}).json()
+                                         ['items'][0]['status'], 'active')
+                        self.assertEqual(client.get('/v1/auth/me').status_code, 200)
+                        self.assertEqual(client.get('/v1/models', headers=rollback_bearer).status_code, 200)
+                        failed_key = admin.post(f'/v1/admin/api-keys/{rollback_id}/revoke', headers=admin_headers,
+                                                json={'reason': 'Key数据库回滚测试'})
+                        self.assertEqual(failed_key.status_code, 500)
+                        self.assertEqual(client.get('/v1/models', headers=rollback_bearer).status_code, 200)
+                        self.assertEqual(admin.get('/v1/admin/audit-events').json()['total'], 3)
+                        self.assertEqual(client.get('/v1/usage/summary').json()['totals'], totals)
+                    finally:
+                        run('exec', '-T', 'app', 'python', '-c',
+                            "from app.db import session\nwith session.cursor() as cur:\n"
+                            " cur.execute('DROP TRIGGER smoke_audit_failure')")
         finally:
             # 唯一随机项目名，只包含本测试创建的数据；绝不使用真实部署 project。
             run('down', '--volumes', '--remove-orphans', timeout=90)

@@ -8,7 +8,7 @@ from app.core import config
 from app.db import session
 
 # 按依赖顺序：账号/会话 → Key → 价格与调用/费用。回滚脚本同名 *_rollback.sql。
-MIGRATIONS = ("0001_auth.sql", "0002_api_keys.sql", "0003_billing.sql", "0004_api_key_deletion.sql", "0005_user_admin.sql", "0006_platform_settings.sql", "0007_model_gateway.sql")
+MIGRATIONS = ("0001_auth.sql", "0002_api_keys.sql", "0003_billing.sql", "0004_api_key_deletion.sql", "0005_user_admin.sql", "0006_platform_settings.sql", "0007_model_gateway.sql", "0008_admin_audit.sql")
 
 
 def statements(sql_file: Path) -> list[str]:

@@ -183,6 +183,14 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .settings-form .connection-toggle { display: flex; align-items: center; gap: 8px; }
 .settings-input { display: block; width: 100%; background: white; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; font-size: 14px; }
 .settings-input:focus { outline: 2px solid #9cac87; outline-offset: 2px; }
+.admin-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 12px; color: var(--muted); }
+.admin-pagination > div { display: flex; gap: 8px; }
+.admin-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.admin-audit-reason { white-space: normal; min-width: 180px; max-width: 320px; overflow-wrap: anywhere; }
+.admin-action-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 28px; border: 1px solid var(--border); border-radius: 12px; background: white; color: var(--ink); overflow-y: auto; }
+.admin-action-dialog::backdrop { background: rgb(12 22 13 / .6); backdrop-filter: blur(5px); }
+.admin-action-dialog h2 { font-size: 21px; font-weight: 600; }
+.admin-action-dialog p, #keys-owner, #management-feedback { overflow-wrap: anywhere; }
 .settings-help { color: var(--muted); font-size: 12px; line-height: 1.8; margin-top: 12px; }
 .logo-picker { display: flex; gap: 18px; align-items: start; margin-top: 14px; min-width: 0; }
 .logo-picker > div:last-child { min-width: 0; }

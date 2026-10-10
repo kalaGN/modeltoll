@@ -1,5 +1,7 @@
 # Laya
 
+[简体中文](README.md) | [English](README.en.md)
+
 模型 API、API Key 管理与 Token 计费平台。支持本地 Laya 和外部兼容模型，提供登录、调用与费用统计、管理员总览、品牌配置及用户管理。
 
 ![平台配置界面预览（示例）](docs/platform-settings-preview.jpg)

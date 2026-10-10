@@ -109,3 +109,23 @@ def laya_runtime() -> str:
     if runtime not in {'local', 'external'}:
         raise ValueError('LAYA_RUNTIME 只支持 local 或 external')
     return runtime
+
+
+@dataclass(frozen=True)
+class RequestLimits:
+    rpm: int = 0
+    max_inflight: int = 0
+
+
+def request_limits_config() -> RequestLimits:
+    """运维环境配置；0 关闭，拒绝空值、符号、小数和超范围值。"""
+    def number(name: str, maximum: int) -> int:
+        raw = os.environ.get(name, '0')
+        normalized = raw.lstrip('0') or '0'
+        if not raw.isascii() or not raw.isdecimal() or len(normalized) > 6:
+            raise ValueError(f'{name} 必须为 0–{maximum} 的整数')
+        value = int(normalized)
+        if value > maximum:
+            raise ValueError(f'{name} 必须为 0–{maximum} 的整数')
+        return value
+    return RequestLimits(number('LAYA_USER_RPM', 100000), number('LAYA_USER_MAX_INFLIGHT', 1024))

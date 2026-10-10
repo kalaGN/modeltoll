@@ -28,6 +28,18 @@ ACTION_NAMES = {
 }
 
 
+class AnalysisPostprocessingError(Exception):
+    """模型已返回，但业务转换失败；只携带可计量元数据，不携带客户内容。"""
+
+    def __init__(self, usage: Any):
+        super().__init__("Customer-service postprocessing failed")
+        self.usage = {
+            key: usage[key]
+            for key in ("input_tokens", "output_tokens", "truncated", "state_tokens_dropped")
+            if isinstance(usage, dict) and key in usage
+        }
+
+
 def probability(answer: dict[str, Any], key: str) -> float:
     return float(answer.get("probabilities", {}).get(key, 0.0))
 
@@ -54,6 +66,15 @@ def analyse_with_usage(
         model="multilingual",
         lang="zh",
     )
+    try:
+        payload = _analysis_payload(message, result)
+    except Exception:
+        usage = result.get("usage", {}) if isinstance(result, dict) else {}
+        raise AnalysisPostprocessingError(usage) from None
+    return payload, result.get("usage", {})
+
+
+def _analysis_payload(message: str, result: dict[str, Any]) -> dict[str, Any]:
     answers = result["answers"]
 
     intent = answers["intent"]["choice"]
@@ -98,4 +119,4 @@ def analyse_with_usage(
         },
         "model": result.get("routing", {}).get("model", "multilingual"),
     }
-    return payload, result.get("usage", {})
+    return payload

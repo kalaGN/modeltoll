@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from fastapi import Depends, HTTPException, Request
 
 from app.core import config, security
-from app.services import accounts, api_keys
+from app.services import accounts, api_keys, request_limits
+
+
+@contextmanager
+def admit_inference(principal: api_keys.Principal):
+    """从准入到结算持有用户名额，限流错误只在 HTTP 边界转换。"""
+    try:
+        with request_limits.admit(principal.user_id):
+            yield
+    except request_limits.RateLimitError as exc:
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+            headers=headers,
+        ) from None
 
 
 def session_token(request: Request) -> str:

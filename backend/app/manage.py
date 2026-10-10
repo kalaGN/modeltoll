@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import sys
 import warnings
 
 from app.core import config
 from app.db import models
-from app.services import bootstrap
+from app.services import bootstrap, inference_recovery
 
 
 class _SafeArgumentParser(argparse.ArgumentParser):
@@ -38,11 +39,25 @@ def main(argv: list[str] | None = None) -> int:
     admin = commands.add_parser("init-admin", help="创建首个管理员；必须先执行 migrate")
     admin.add_argument("--email", required=True, help="明确指定首个管理员邮箱")
     admin.add_argument("--password-stdin", action="store_true", help="显式从标准输入读取一行口令，默认交互输入")
+    recovery = commands.add_parser("recover-calls", help="默认只读巡检；显式apply恢复可信成功回执的调用")
+    recovery.add_argument("--call-id", help="定位单调用ID；apply必填")
+    recovery.add_argument("--limit", type=int, default=100, help="巡检条数1–100，默认100")
+    recovery.add_argument("--offset", type=int, default=0, help="只读巡检分页偏移0–1000000，默认0")
+    recovery.add_argument("--apply", action="store_true", help="确认按原价格补账，可能对原HTTP500调用产生费用")
     args = parser.parse_args(argv)
+    if args.command == "recover-calls" and (not 1 <= args.limit <= 100 or not 0 <= args.offset <= 1000000 or (args.apply and not args.call_id)):
+        parser.error("恢复参数无效")
     try:
         if args.command == "migrate":
             models.init_db()
             print("数据库迁移完成")
+        elif args.command == "recover-calls":
+            if args.apply:
+                amount = inference_recovery.recover(args.call_id)
+                print(json.dumps({"call_id": args.call_id, "amount_yuan": str(amount)}, ensure_ascii=False))
+            else:
+                options = {"offset": args.offset} if args.offset else {}
+                print(json.dumps(inference_recovery.inspect_calls(limit=args.limit, call_id=args.call_id, **options), ensure_ascii=False))
         else:
             if args.password_stdin:
                 password = _password_from_stdin()

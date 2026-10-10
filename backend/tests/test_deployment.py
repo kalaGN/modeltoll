@@ -108,6 +108,18 @@ class ComposeContractTests(unittest.TestCase):
         self.assertIn('--database=', db['healthcheck']['test'][1])
         self.assertIn('MYSQL_PWD=', db['healthcheck']['test'][1])
 
+    def test_limits_default_and_explicit_empty_preserved_for_startup_validation(self):
+        result = self.compose_config()
+        self.assertEqual(result.returncode, 0)
+        env = json.loads(result.stdout)['services']['app']['environment']
+        self.assertEqual(str(env['LAYA_USER_RPM']), '0')
+        self.assertEqual(str(env['LAYA_USER_MAX_INFLIGHT']), '0')
+        result = self.compose_config(LAYA_USER_RPM='', LAYA_USER_MAX_INFLIGHT='')
+        self.assertEqual(result.returncode, 0)
+        env = json.loads(result.stdout)['services']['app']['environment']
+        self.assertEqual(env['LAYA_USER_RPM'], '')
+        self.assertEqual(env['LAYA_USER_MAX_INFLIGHT'], '')
+
     def test_port_override(self):
         result = self.compose_config(APP_PORT='8012')
         self.assertEqual(result.returncode, 0, 'Compose config failed')

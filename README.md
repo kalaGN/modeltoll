@@ -4,6 +4,24 @@
 
 ![平台配置界面预览（示例）](docs/platform-settings-preview.jpg)
 
+## 用户请求限流
+
+默认关闭；同一用户的全部 API Key 和三个推理接口共享额度。启用示例：
+
+```bash
+LAYA_USER_RPM=60 LAYA_USER_MAX_INFLIGHT=1 zsh run-api
+```
+
+容器部署把两个变量放入私有 `.env.deploy` 并重建应用容器；不要提交真实密码。
+`LAYA_USER_RPM` 范围0–100000，`LAYA_USER_MAX_INFLIGHT` 范围0–1024，0关闭对应限制，非法值拒绝启动。
+RPM 是 MySQL UTC 固定分钟预算，不是滚动60秒；分钟边界附近可能短时间接受两倍额度。
+通过准入即占一次 RPM，后续模型或记账失败不退回；非法输入、鉴权失败、模型未配置及限流拒绝不扣次数。
+在途名额覆盖排队、执行和结算，仍需单进程单 worker，不会增加模型并行度。
+超限返回429及 `Retry-After`，业务码 `rate_limit_exceeded` / `concurrency_limit_exceeded`；计数数据库故障返回503 `rate_limit_unavailable`。
+拒绝不产生调用或费用记录；重启保留同一分钟RPM，在途数随进程重启清空。
+只清理24小时前的临时窗口，不清理账务历史。这不是 Token 硬配额。
+关闭或回滚先设两个值为0并重启；停用新代码后才能人工执行0009表回滚。
+
 ## Docker 部署
 
 需要 Docker Engine 和 Compose v2；容器仅使用外部模型模式。

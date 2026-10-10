@@ -34,6 +34,7 @@ PAGES = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    config.request_limits_config()
     models.init_db()
     logger.info("MySQL schema ready for database %s", config.database_config().database)
     app.state.router = None

@@ -13,6 +13,8 @@ services:
       MYSQL_USER: ${MYSQL_USER:?Set a non-root MYSQL_USER in your env file}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in your env file}
       UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+      LAYA_USER_RPM: ${LAYA_USER_RPM-0}
+      LAYA_USER_MAX_INFLIGHT: ${LAYA_USER_MAX_INFLIGHT-0}
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     extra_hosts:

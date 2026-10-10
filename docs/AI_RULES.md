@@ -32,10 +32,10 @@
 - 新抽象必须有重复逻辑、真实替换需求或独立测试价值；不为一次调用建空层。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
-- 持久化为 MySQL `laya_platform`，当前十张表：设计 §2 的 `users`、`user_sessions`、
+- 持久化为 MySQL `laya_platform`，当前十三张表：设计 §2 的 `users`、`user_sessions`、
   `api_keys`、`pricing_rules`、`api_calls`、`usage_charges`，加上实现补齐的
-  `login_throttle` 和 `platform_settings`；`model_connection` 只存管理员固定上游的非秘密配置，`admin_audit_events` 保存管理操作审计。DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
-  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`、`0008_admin_audit.sql`），不虚构未设计的表。`api_calls` 与
+  `login_throttle` 和 `platform_settings`；`model_connection` 只存管理员固定上游的非秘密配置，`admin_audit_events` 保存管理操作审计，`request_rate_windows` 只存请求计数临时窗口。DDL 唯一来源是 `backend/migrations/`（`0001_auth.sql`、
+  `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`、`0008_admin_audit.sql`、`0009_request_rate_windows.sql`、`0010_success_receipts.sql`、`0011_request_idempotency.sql`），成功回执表`inference_success_receipts`只保存可信完成事实/计量，`request_idempotency`只保存user范围Key及请求摘要，不保存正文。不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
 
@@ -86,11 +86,14 @@
   出现一次；页面与统计只输出脱敏标识。不把本机监听等同于鉴权。
 - 调用终态、用量与费用在同一短事务内写入；拿不到用量时标记计费待确认，
   记账失败不得对外返回伪成功。数据库事务不跨推理持有。
+- Token用量严格校验整数（排除bool）、非负及范围；终态和已知用量不得冲突覆写。同调用相同成功事实重复结算返回原费用，不另插费用；恢复默认只读，显式--apply只按可信成功回执及原价格恢复（已确认可对原HTTP500调用补账）。不能仅凭running、年龄或已知用量收费。
+- 可选Idempotency-Key在同用户所有Key/入口共享，摘要占位与accepted原子提交；重复409原调用ID，不回放成功回复、不重跑模型、不自动删除记录。响应必须先可JSON编码才保存成功回执，后处理失败保留有效用量但不收费。
 - 固定服务模型，禁止把用户输入当作 Shell、文件路径或模型下载地址执行。
 - 评估身体积、嵌套深度、排队时间和线程占用，不把字符上限等同于完整限流。
 - 当前有日志和健康端点，无自定义重试、熔断、指标、Tracing 或告警。
 - 不擅自增加推理重试；重试会增加排队和资源占用。
 - 禁止多 worker/移除锁的盲目优化；必须评估独立进程重复加载与内存峰值。
+- 用户限流默认关闭；RPM按UTC固定分钟持久化，在途名额覆盖排队到结算并finally释放。拒绝不记调用/费用，数据库失败拒绝准入，只清理24小时前临时窗口。不是Token硬配额。
 - 待建立性能基线：固定模型、版本、设备、输入、并发和冷/热启动状态，记录吞吐、
   平均延迟、P95/P99、失败率与内存；不能把单次成功推理当容量结论。
 - 模型/设备/依赖、并发策略、输入上限或日志量改变后用可比参数重新测量。

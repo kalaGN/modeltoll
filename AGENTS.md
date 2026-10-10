@@ -16,7 +16,7 @@
   `backend/app/services/customer_service.py`；并非自动化测试。
 - `run-api` / `run-laya`：启动脚本，`run-api` 以 `PYTHONPATH=backend` 启动 `app.main:app`；
   `requirements-api.txt` 声明 API、鉴权与数据库驱动依赖。
-- `backend/app/manage.py`：显式迁移与首个管理员 CLI，不接受密码命令行参数，不自动提升已有普通用户权限。
+- `backend/app/manage.py`：显式迁移、首个管理员与recover-calls CLI；恢复默认只读，--apply仅恢复可信成功回执的单调用，不接受密码命令行参数，不自动提升已有普通用户权限。
 - `Dockerfile` / `compose.yaml`：仅 external 模式的容器部署，默认宿主 loopback、独立 MySQL；私有配置用 `.env.deploy`，不可覆盖本机 `.env`。
 - `.env`：本机 MySQL 凭据，已被 Git 忽略；未配置数据库凭据时启动失败，容器由环境变量提供。
 
@@ -35,6 +35,8 @@
 - 功能与修复必须同步对应验证；缺陷先复现并建立失败测试。
 - 部署、架构、安全、性能和依赖变更先评估兼容与回滚。
 - 单进程单模型和推理锁是当前约束，变更前评估 MPS 内存及并发。
+- 请求限流默认关闭，同用户全部Key/推理入口共享固定分钟RPM和在途名额，仍只支持单worker；不是Token硬配额。
+- 成功回执不含正文；恢复补账沿原价格且幂等。无回执/未知/矛盾不能推算收费；可选Idempotency-Key仅存摘要，同用户共享，重复409，不回放回复、不自动过期删除。
 - 不静默解决需求、规则、知识和代码冲突；报告位置、影响和方案。
 - 不自动提交、不清理未确认可删除的文件；保留用户已有修改。
 - 不创建、删除、移动或重命名 `docs/` 下的目录。

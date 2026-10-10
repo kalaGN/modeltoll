@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
+from pymysql.err import IntegrityError
 
 from app.db import session
 from app.services import api_keys, billing
@@ -39,23 +40,98 @@ class UsageUnavailable(Exception):
         self.call_id = call_id
 
 
-def begin(endpoint: str, principal: api_keys.Principal, model: str) -> Call:
+class CallStateConflict(Exception):
+    """调用不存在或生命周期/账务事实矛盾；禁止覆盖历史或伪造成功。"""
+
+
+class IdempotencyConflict(Exception):
+    def __init__(self, code: str, call_id: str):
+        super().__init__(code)
+        self.code, self.call_id = code, call_id
+
+
+def _receipt(cur: Any, call: Call) -> dict[str, Any] | None:
+    cur.execute(
+        "SELECT input_tokens, output_tokens, truncated, state_tokens_dropped,"
+        " completed_at, duration_ms FROM inference_success_receipts WHERE call_id = %s",
+        (call.id,),
+    )
+    return cur.fetchone()
+
+
+def _usage_values(row: dict[str, Any]) -> tuple:
+    return tuple(row[key] for key in ('input_tokens', 'output_tokens', 'truncated',
+                                     'state_tokens_dropped'))
+
+
+def _locked_call(cur: Any, call: Call) -> dict[str, Any]:
+    cur.execute(
+        "SELECT status, http_status, error_code, input_tokens, output_tokens, truncated,"
+        " state_tokens_dropped, billing_status, billing_reason, pricing_rule_id,"
+        " completed_at, duration_ms"
+        " FROM api_calls WHERE id = %s FOR UPDATE", (call.id,),
+    )
+    row = cur.fetchone()
+    if row is None or row['pricing_rule_id'] != call.rule.id:
+        raise CallStateConflict(call.id)
+    return row
+
+
+def _charge(cur: Any, call: Call) -> dict[str, Any] | None:
+    cur.execute(
+        "SELECT pricing_rule_id, billable_input_tokens, unit_tokens, unit_price_yuan,"
+        " amount_yuan, currency FROM usage_charges WHERE call_id = %s", (call.id,),
+    )
+    return cur.fetchone()
+
+
+def _require_active(cur: Any, call: Call, row: dict[str, Any]) -> None:
+    if (row['status'] not in {'accepted', 'running'} or
+            row['billing_status'] != 'pending' or _charge(cur, call) is not None):
+        raise CallStateConflict(call.id)
+
+
+def begin(endpoint: str, principal: api_keys.Principal, model: str, *,
+          idempotency: tuple[str, str] | None = None) -> Call:
     """接受调用：固定价格版本、写入 accepted，并记录 Key 最近使用时间。"""
     rule = billing.current_rule(model)
     call_id = str(uuid.uuid4())
     started = time.monotonic()
-    with session.transaction() as cur:
-        cur.execute(
-            "INSERT INTO api_calls (id, user_id, api_key_id, endpoint, model,"
-            " pricing_rule_id, status, started_at, billing_status, created_at, updated_at)"
-            " VALUES (%s, %s, %s, %s, %s, %s, 'accepted', UTC_TIMESTAMP(3), 'pending',"
-            " UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
-            (call_id, principal.user_id, principal.api_key_id, endpoint, model, rule.id),
-        )
-        cur.execute(
-            "UPDATE api_keys SET last_used_at = UTC_TIMESTAMP(3) WHERE id = %s",
-            (principal.api_key_id,),
-        )
+    try:
+        with session.transaction() as cur:
+            # Lock the parent Key before FK inserts, avoiding S→X lock upgrades
+            # while another request waits for the same idempotency reservation.
+            cur.execute(
+                "UPDATE api_keys SET last_used_at = UTC_TIMESTAMP(3) WHERE id = %s",
+                (principal.api_key_id,),
+            )
+            cur.execute(
+                "INSERT INTO api_calls (id, user_id, api_key_id, endpoint, model,"
+                " pricing_rule_id, status, started_at, billing_status, created_at, updated_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s, 'accepted', UTC_TIMESTAMP(3), 'pending',"
+                " UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
+                (call_id, principal.user_id, principal.api_key_id, endpoint, model, rule.id),
+            )
+            if idempotency is not None:
+                cur.execute(
+                    "INSERT INTO request_idempotency (user_id, key_hash, request_hash, call_id,"
+                    " created_at) VALUES (%s, %s, %s, %s, UTC_TIMESTAMP(3))",
+                    (principal.user_id, *idempotency, call_id),
+                )
+    except IntegrityError as exc:
+        if idempotency is None or exc.args[0] != 1062:
+            raise
+        # Rollback above removes the new call; the unique-key winner is committed now.
+        with session.cursor() as cur:
+            cur.execute("SELECT call_id, request_hash FROM request_idempotency"
+                        " WHERE user_id = %s AND key_hash = %s",
+                        (principal.user_id, idempotency[0]))
+            prior = cur.fetchone()
+        if prior is None:
+            raise
+        code = ('request_already_processed' if prior['request_hash'] == idempotency[1]
+                else 'idempotency_conflict')
+        raise IdempotencyConflict(code, prior['call_id']) from None
     return Call(
         id=call_id,
         user_id=principal.user_id,
@@ -68,12 +144,18 @@ def begin(endpoint: str, principal: api_keys.Principal, model: str) -> Call:
 
 
 def mark_running(call: Call) -> None:
-    with session.cursor() as cur:
+    with session.transaction() as cur:
+        row = _locked_call(cur, call)
+        _require_active(cur, call, row)
+        if row['status'] != 'accepted' or _receipt(cur, call) is not None:
+            raise CallStateConflict(call.id)
         cur.execute(
             "UPDATE api_calls SET status = 'running', updated_at = UTC_TIMESTAMP(3)"
             " WHERE id = %s AND status = 'accepted'",
             (call.id,),
         )
+        if cur.rowcount != 1:
+            raise CallStateConflict(call.id)
 
 
 def _duration_ms(call: Call) -> int:
@@ -86,31 +168,91 @@ def succeeded(call: Call, usage: dict[str, Any], http_status: int = 200) -> Deci
     用量缺失时先落 failed/pending 终态，再抛 UsageUnavailable，让调用方对外返回
     失败，避免库内记 500 而 HTTP 仍回 200 的矛盾状态。
     """
-    input_tokens = usage.get("input_tokens")
-    if input_tokens is None:
+    try:
+        values = _validated_usage(usage)
+    except (TypeError, ValueError):
         failed(call, "usage_unavailable", http_status=500)
         raise UsageUnavailable(call.id)
-    billable = int(input_tokens)
-    amount = Decimal("0.000000")
     with session.transaction() as cur:
+        return _settle_success(cur, call, values, http_status)
+
+
+def capture_success(call: Call, usage: dict[str, Any]) -> None:
+    """Persist a successful, serializable business result's usage without its payload."""
+    try:
+        values = _validated_usage(usage)
+    except (TypeError, ValueError):
+        failed(call, 'usage_unavailable', 500)
+        raise UsageUnavailable(call.id) from None
+    with session.transaction() as cur:
+        row = _locked_call(cur, call)
+        _require_active(cur, call, row)
+        previous = _usage_values(row)
+        if any(value is not None for value in previous) and previous != values:
+            raise CallStateConflict(call.id)
+        receipt = _receipt(cur, call)
+        if receipt is not None:
+            if _usage_values(receipt) != values:
+                raise CallStateConflict(call.id)
+            return
         cur.execute(
-            "UPDATE api_calls SET status = 'succeeded', http_status = %s,"
-            " completed_at = UTC_TIMESTAMP(3), duration_ms = %s, input_tokens = %s,"
-            " output_tokens = %s, truncated = %s, state_tokens_dropped = %s,"
-            " billing_status = 'charged', billing_reason = %s,"
-            " updated_at = UTC_TIMESTAMP(3) WHERE id = %s",
-            (
-                http_status,
-                _duration_ms(call),
-                billable,
-                _nullable_int(usage.get("output_tokens")),
-                _nullable_bool(usage.get("truncated")),
-                _nullable_int(usage.get("state_tokens_dropped")),
-                call.rule.billing_policy_version,
-                call.id,
-            ),
+            "INSERT INTO inference_success_receipts (call_id, input_tokens, output_tokens,"
+            " truncated, state_tokens_dropped, completed_at, duration_ms)"
+            " VALUES (%s, %s, %s, %s, %s, UTC_TIMESTAMP(3), %s)",
+            (call.id, *values, _duration_ms(call)),
         )
-        amount = billing.insert_charge(cur, call.id, call.rule, billable)
+
+
+def _settle_success(cur: Any, call: Call, values: tuple, http_status: int = 200) -> Decimal:
+    """Shared transaction body for normal settlement and explicitly authorized recovery."""
+    billable, output_tokens, truncated, dropped = values
+    row = _locked_call(cur, call)
+    receipt = _receipt(cur, call)
+    if receipt is not None and _usage_values(receipt) != values:
+        raise CallStateConflict(call.id)
+    if row['status'] == 'succeeded':
+        charge = _charge(cur, call)
+        if receipt is not None and (row['completed_at'] != receipt['completed_at'] or
+                                    row['duration_ms'] != receipt['duration_ms']):
+            raise CallStateConflict(call.id)
+        if (row['http_status'] != http_status or row['error_code'] is not None or
+                row['billing_status'] != 'charged' or
+                row['billing_reason'] != call.rule.billing_policy_version or
+                tuple(row[key] for key in ('input_tokens', 'output_tokens', 'truncated',
+                                           'state_tokens_dropped')) != values or
+                charge is None or charge['pricing_rule_id'] != call.rule.id or
+                charge['billable_input_tokens'] != billable or
+                charge['unit_tokens'] != call.rule.unit_tokens or
+                Decimal(str(charge['unit_price_yuan'])) != call.rule.unit_price_yuan or
+                charge['currency'] != call.rule.currency or
+                Decimal(str(charge['amount_yuan'])) != billing.amount_yuan(billable, call.rule)):
+            raise CallStateConflict(call.id)
+        return Decimal(str(charge['amount_yuan']))
+    _require_active(cur, call, row)
+    previous = _usage_values(row)
+    if any(value is not None for value in previous) and previous != values:
+        raise CallStateConflict(call.id)
+    completed = 'completed_at = %s,' if receipt else 'completed_at = UTC_TIMESTAMP(3),'
+    duration = receipt['duration_ms'] if receipt else _duration_ms(call)
+    cur.execute(
+        "UPDATE api_calls SET status = 'succeeded', http_status = %s,"
+        " duration_ms = %s, input_tokens = %s,"
+        " output_tokens = %s, truncated = %s, state_tokens_dropped = %s,"
+        " billing_status = 'charged', billing_reason = %s,"
+        + completed + " updated_at = UTC_TIMESTAMP(3) WHERE id = %s",
+        (
+            http_status,
+            duration,
+            billable,
+            output_tokens,
+            truncated,
+            dropped,
+            call.rule.billing_policy_version,
+            *([receipt['completed_at']] if receipt else []),
+            call.id,
+        ),
+    )
+    amount = billing.insert_charge(cur, call.id, call.rule, billable)
     return amount
 
 
@@ -124,6 +266,13 @@ def failed(call: Call, error_code: str, http_status: int) -> Decimal:
     billing_status = "pending" if usage_unknown else "not_billable"
     reason = "usage_unavailable" if usage_unknown else "policy_succeeded_only"
     with session.transaction() as cur:
+        row = _locked_call(cur, call)
+        if _receipt(cur, call) is not None:
+            raise CallStateConflict(call.id)
+        if _same_terminal(cur, call, row, 'failed', error_code[:64], http_status,
+                          billing_status, reason):
+            return Decimal('0.000000')
+        _require_active(cur, call, row)
         cur.execute(
             "UPDATE api_calls SET status = 'failed', http_status = %s, error_code = %s,"
             " completed_at = UTC_TIMESTAMP(3), duration_ms = %s,"
@@ -137,6 +286,13 @@ def failed(call: Call, error_code: str, http_status: int) -> Decimal:
 def interrupted(call: Call, error_code: str, http_status: int) -> Decimal:
     """运行前被撤销或运行被中止：写入可恢复终态，不产生费用。"""
     with session.transaction() as cur:
+        row = _locked_call(cur, call)
+        if _receipt(cur, call) is not None:
+            raise CallStateConflict(call.id)
+        if _same_terminal(cur, call, row, 'interrupted', error_code[:64], http_status,
+                          'not_billable', error_code[:64]):
+            return Decimal('0.000000')
+        _require_active(cur, call, row)
         cur.execute(
             "UPDATE api_calls SET status = 'interrupted', http_status = %s,"
             " error_code = %s, completed_at = UTC_TIMESTAMP(3), duration_ms = %s,"
@@ -149,24 +305,54 @@ def interrupted(call: Call, error_code: str, http_status: int) -> Decimal:
 
 def keep_usage(call: Call, usage: dict[str, Any]) -> None:
     """推理已产出用量但后续分支失败时保留已知用量，不默认写 0（设计 §7）。"""
-    with session.cursor() as cur:
+    values = _validated_usage(usage)
+    with session.transaction() as cur:
+        row = _locked_call(cur, call)
+        _require_active(cur, call, row)
+        receipt = _receipt(cur, call)
+        if receipt is not None and _usage_values(receipt) != values:
+            raise CallStateConflict(call.id)
+        previous = tuple(row[key] for key in ('input_tokens', 'output_tokens', 'truncated',
+                                             'state_tokens_dropped'))
+        if previous == values:
+            return
+        if any(value is not None for value in previous):
+            raise CallStateConflict(call.id)
         cur.execute(
             "UPDATE api_calls SET input_tokens = %s, output_tokens = %s, truncated = %s,"
             " state_tokens_dropped = %s, updated_at = UTC_TIMESTAMP(3)"
             " WHERE id = %s AND input_tokens IS NULL",
             (
-                usage.get("input_tokens"),
-                _nullable_int(usage.get("output_tokens")),
-                _nullable_bool(usage.get("truncated")),
-                _nullable_int(usage.get("state_tokens_dropped")),
+                *values,
                 call.id,
             ),
         )
 
 
-def _nullable_int(value: Any) -> int | None:
-    return None if value is None else int(value)
+def _same_terminal(cur: Any, call: Call, row: dict[str, Any], status: str,
+                   error_code: str, http_status: int, billing_status: str, reason: str) -> bool:
+    if row['status'] != status:
+        return False
+    if (row['error_code'] != error_code or row['http_status'] != http_status or
+            row['billing_status'] != billing_status or row['billing_reason'] != reason or
+            _charge(cur, call) is not None):
+        raise CallStateConflict(call.id)
+    return True
 
 
-def _nullable_bool(value: Any) -> int | None:
-    return None if value is None else int(bool(value))
+def _validated_usage(usage: dict[str, Any]) -> tuple[int, int | None, int | None, int | None]:
+    if not isinstance(usage, dict):
+        raise ValueError('invalid usage')
+    values = []
+    for key in ('input_tokens', 'output_tokens', 'state_tokens_dropped'):
+        value = usage.get(key)
+        if value is None and key != 'input_tokens':
+            values.append(None)
+        elif type(value) is int and 0 <= value <= 2**63 - 1:
+            values.append(value)
+        else:
+            raise ValueError('invalid token count')
+    truncated = usage.get('truncated')
+    if truncated is not None and type(truncated) is not bool:
+        raise ValueError('invalid truncation flag')
+    return values[0], values[1], None if truncated is None else int(truncated), values[2]

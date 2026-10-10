@@ -87,10 +87,17 @@ class DeploymentRuntimeTests(unittest.TestCase):
                 self.assertEqual(key_result.status_code, 201)
                 bearer = {'Authorization': 'Bearer ' + key_result.json()['secret']}
                 self.assertEqual(client.get('/v1/models', headers=bearer).json()['data'][0]['id'], 'fixture-model')
-                result = client.post('/v1/chat/completions', headers=bearer,
+                retry_headers = {**bearer, 'Idempotency-Key': uuid.uuid4().hex}
+                result = client.post('/v1/chat/completions', headers=retry_headers,
                                      json={'model': 'fixture-model', 'messages': [{'role': 'user', 'content': '合成测试'}]})
                 self.assertEqual(result.status_code, 502)  # 配置的是本容器未开放的端口，无真实推理。
                 self.assertIn('X-Request-Id', result.headers)
+                original_call_id = result.headers['X-Request-Id']
+                duplicate = client.post('/v1/chat/completions', headers=retry_headers,
+                                        json={'model': 'fixture-model', 'messages': [{'role': 'user', 'content': '合成测试'}]})
+                self.assertEqual(duplicate.status_code, 409)
+                self.assertEqual(duplicate.json()['call_id'], original_call_id)
+                self.assertEqual(duplicate.headers['X-Request-Id'], original_call_id)
                 totals = client.get('/v1/usage/summary').json()['totals']
                 self.assertEqual(totals['calls_total'], 1)
                 self.assertEqual(totals['calls_failed'], 1)
@@ -152,7 +159,11 @@ class DeploymentRuntimeTests(unittest.TestCase):
                 self.assertEqual(client.post(f'/v1/api-keys/{historical}/revoke', headers=headers,
                                             json={}).status_code, 200)
                 self.assertEqual(client.delete(f'/v1/api-keys/{historical}', headers=headers).status_code, 200)
-                with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=15, trust_env=False) as admin:
+                # Deliberate unhandled 500 responses cause Uvicorn to close the
+                # connection. Avoid racing that close with the next rollback
+                # assertion; no request is retried and all assertions still run.
+                with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=15, trust_env=False,
+                                  limits=httpx.Limits(max_keepalive_connections=0)) as admin:
                     admin_headers = {'X-CSRF-Token': admin.get('/v1/auth/csrf').json()['csrf_token']}
                     self.assertEqual(admin.post('/v1/auth/login', headers=admin_headers,
                                      json={'email': admin_email, 'password': password}).status_code, 200)

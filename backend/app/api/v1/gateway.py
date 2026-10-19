@@ -1,8 +1,7 @@
 """平台 Key 保护的文字网关和管理员连接配置。"""
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.routing import APIRoute
-from app.api import dependencies
-from app.api.v1.inference import _begin_call, _key_revoked, _prepare_idempotency, _response, _settle
+from app.api import dependencies, inference_support
 from app.schemas.gateway import ChatRequest, ConnectionRequest
 from app.services import accounts, api_keys, billing, gateway, inference, model_runtime
 
@@ -74,17 +73,17 @@ def chat(body: ChatRequest, request: Request, principal: api_keys.Principal = De
     value = enabled_connection()
     if body.model != value.model:
         raise HTTPException(404, detail={'code': 'model_not_found', 'message': '只能调用管理员配置的模型'})
-    token = _prepare_idempotency(idempotency_key, '/v1/chat/completions', value.model, body)
+    token = inference_support.prepare_idempotency(idempotency_key, '/v1/chat/completions', value.model, body)
     with dependencies.admit_inference(principal):
         try:
-            call = _begin_call('/v1/chat/completions', principal, value.model, token)
+            call = inference_support.begin_call('/v1/chat/completions', principal, value.model, token)
         except billing.NoPricingRule:
             raise HTTPException(503, detail={'code': 'pricing_unavailable', 'message': '模型尚无生效价格，请联系管理员'}) from None
         if not model_runtime.inference_lock.acquire(timeout=30):
             inference.interrupted(call, 'queue_timeout', 503)
             raise HTTPException(503, detail={'code': 'queue_timeout', 'message': '推理排队超时，请稍后重试'})
         try:
-            _key_revoked(call, principal)
+            inference_support.key_revoked(call, principal)
             inference.mark_running(call)
             try:
                 payload, usage = gateway.chat(value, body)
@@ -94,8 +93,8 @@ def chat(body: ChatRequest, request: Request, principal: api_keys.Principal = De
                 failure.headers = {'X-Request-Id': call.id}
                 raise failure from None
             try:
-                response = _response(call, payload, usage)
-                _settle(call, usage)
+                response = inference_support.response(call, payload, usage)
+                inference_support.settle(call, usage)
             except HTTPException as exc:
                 exc.headers = {**(exc.headers or {}), 'X-Request-Id': call.id}
                 raise

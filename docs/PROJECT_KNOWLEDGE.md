@@ -11,6 +11,24 @@
 边界仍待产品确认。
 下文描述当前代码，不将需求目标冒充已具备的功能。
 
+## 2026-10-19 后端职责边界
+
+实施依据为[职责修复设计](20261018-后端职责修复-设计.md)，不是全面落地旧分层草案。
+api/inference_support.py 共享推理 HTTP 协调，路由不互相导入；schemas/platform.py
+持有 SettingsRequest，schemas/auth.py 依赖 core/validation.py 而非账号服务。
+core/time.py 统一既有 UTC 格式化。services/gateway.py 管理连接和价格原子持久化，
+上游传输、TLS、响应解析和协议校验归 integrations/openai_client.py；既有网关公开
+操作直接绑定适配器实现，无第二套传输逻辑。
+
+品牌服务为 services/branding.py，管理员聚合为 services/admin_overview.py；公开品牌路由
+在 api/v1/platform.py，管理员设置与总览保留在 admin.py。db/migrations.py 是迁移执行器，
+不是 ORM 模型；db/session.py 保留连接与事务。main/manage 入口、启动迁移策略与模型锁不变。
+恢复通过 inference 的 success_receipt/validate_usage/usage_values/settle_success_in_transaction
+复用原有结算；事务游标由调用方持有，没有拆分提交。
+
+完整 OpenAPI 与迁移前相同；默认回归 194 项（190 通过、4 opt-in 跳过）。本切片未重启服务、
+未访问真实数据库或模型，未重新执行容器验证；具体命令与范围见[任务记录](20261018-后端职责修复-任务.md)。
+
 ## 知识索引
 
 | 章节 | 内容 | 何时读取 |
@@ -30,15 +48,16 @@
   键盘焦点；完整密钥只在创建弹窗展示，接入示例使用 `YOUR_API_KEY` 占位符。
   验证范围见 [改版任务](20261007-页面视觉改版-任务.md)，不代表新增业务功能或奖项认证。
 
-- 形态：本机 HTTP 服务（后端 + 同源页面）+ CLI。后端在 `backend/app`，
+- 形态：独立前端 + HTTP API（前端同源代理 API）+ CLI。后端在 `backend/app`，
   入口 `app.main:app`；前端在 `frontend/`，Tailwind 构建到 `frontend/dist`。
 - `backend/app/main.py` 是 ASGI 入口与组装点；`backend/app/api/v1/` 放路由；
   `backend/app/services/` 放账号、Key 生命周期与鉴权、价格与记账、调用协调、
   统计查询、客服规则与模型运行时；`backend/app/schemas/` 放请求与查询契约。
-- 前端页面在 `frontend/src/`（`login.html`、`api-keys.html`、`usage.html`、
-  `billing.html` 共用 `app.js`），`npm run build` 产出 `frontend/dist/`，
-  由后端以 `/assets` 同源提供；页面路由 `/login`、`/keys`、`/usage`、`/billing`
-  未构建时返回 500 提示。
+- 前端 HTML 在 `frontend/src/pages/templetes/`，页面模块在 `pages/`，公共模块在
+  `shared/`，CSS 在 `styles/`。八个 HTML 模板（含根导航）各加载独立 ES Module 入口，
+  `npm run build` 将模板输出到 `frontend/dist/*.html` 并保留 JS 相对导入路径，
+  由本地独立前端 5173 或独立 Nginx 容器提供页面和 /assets；API 只提供 /v1、/health 和接口文档。
+  页面 CSRF 初始化、根导航和角色检查在前端，实际数据权限仍在 API。
 - `run-api` 是 zsh/Uvicorn 启动器（注入 `PYTHONPATH=backend`），`run-laya` 是 Laya
   命令行启动器，`customer_service_test.py` 是客服 CLI 入口。
 - 当前 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、Pydantic 2.13.5、
@@ -56,19 +75,21 @@
   未见缓存服务、MQ、搜索、对象存储或迁移框架。凭据在根目录 `.env`（已忽略）。
 - 文件持久化另有 `.hf-cache` 模型缓存；`.venv`、`.uv-cache`、`.idea`、`__pycache__`、
   `torchinductor_wangfei`、`node_modules`、`frontend/dist` 为本机目录，不擅自删除。
-- 未见 Docker、Kubernetes、反向代理、进程管理配置或 CI；运行方式是终端进程。
+- 已有独立 Python/Nginx Dockerfile 和 Compose external 部署，只有 Nginx 对宿主 loopback 发布端口；未配置 Kubernetes 或远程 CI。
 - Git 于 2026-10-02 初始化；`.gitignore` 排除虚拟环境、模型/工具缓存、IDE、字节码、
   日志、本机密钥、`node_modules/` 与 `frontend/dist/`。团队分支策略待确认。
-- 已有 `backend/tests/test_api_key_deletion.py`、`test_admin.py` 标准库 unittest 回归测试；客服文件名含 test 但运行的是 CLI 推理。
+- 后端 unittest 位于 `backend/tests/{unit,contract,integration,e2e}`，共享辅助在 support；
+  默认发现命令不变。前端另有 Node 内置 unit/contract 测试和可选浏览器隔离回归。
+  客服文件名含 test 但运行的是 CLI 推理。
 - 未安装 pytest、ruff、mypy、build，也没有 formatter、Lint、覆盖率配置。
 
 ## 架构与生命周期
 
-登录链路：浏览器 → `/login`（`frontend/dist/login.html` + CSRF Cookie）→
+登录链路：浏览器 → 独立前端 `/login` → `GET /v1/auth/csrf` 获取 Cookie →
 `POST /v1/auth/*` → Pydantic 校验 → CSRF 依赖 → `services/accounts` → MySQL 短事务。
 
-Key 与统计链路：`/keys`、`/usage`、`/billing` 页面要求登录会话（未登录 302 到
-`/login`）→ `/v1/api-keys*` 走会话 + CSRF → `services/api_keys`；
+Key 与统计链路：独立前端 `/keys`、`/usage`、`/billing` 检查登录状态并导航
+到 `/login`；实际 `/v1/api-keys*` 仍走服务端会话 + CSRF → `services/api_keys`；
 `/v1/usage/*`、`/v1/billing/*` 走 `dependencies.require_user` → `services/statistics`，
 所有 SQL 都带 `c.user_id = %s` 范围，明细用 `(started_at, id)` keyset 游标分页。
 
@@ -79,7 +100,7 @@ Key 与统计链路：`/keys`、`/usage`、`/billing` 页面要求登录会话�
 → 终态、用量与费用在同一短事务写入（`succeeded`/`failed`/`interrupted`）→
 JSON 响应 + `X-Request-Id`。事务不跨推理持有。
 
-lifespan 顺序是先 `db/models.init_db()` 执行迁移 SQL，再创建 `Router(max_loaded=1)`
+lifespan 顺序是先 `db/migrations.init_db()` 执行迁移 SQL，再创建 `Router(max_loaded=1)`
 并加载 multilingual，保存到 `app.state`；任一失败都阻止应用启动。同步路由由框架在
 线程池中执行，推理锁把两类预测串行化。当前 lifespan 退出没有显式模型清理逻辑。
 `services/model_runtime.py` 持有推理锁与模型构建，`main.py` 注入运行时，
@@ -285,7 +306,7 @@ SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字
 读取当前角色。管理员登录和根路由进入 /admin，普通账号进入 /keys；/admin/settings 是品牌配置页。
 页面与平台接口都校验管理员身份，管理写操作要求 CSRF；原个人统计范围不变。
 0005/0006 迁移在本机 MySQL 重复执行通过，迁移执行后既有用户保持普通角色；随后已按用户明确指定将首个账号设为管理员并验证，未修改其它账号。
-平台存量指标和窗口调用/费用、UTC 日趋势由 services/platform.py 在只读事务中汇总；窗口最多 366 天。
+平台存量指标和窗口调用/费用、UTC 日趋势由 services/admin_overview.py 在只读事务中汇总；窗口最多 366 天。
 平台配置为单行 MySQL 表，公开接口只读取三个品牌字段。名称、简介以 textContent 显示；Logo 限 2 MB、
 4096px，Pillow 12.3.0 重新编码并缩放到最多 512px PNG，去除元数据，不增加磁盘上传目录。
 

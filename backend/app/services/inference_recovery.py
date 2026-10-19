@@ -18,7 +18,7 @@ def _receipt_values(receipt: dict[str, Any]) -> tuple:
     if (receipt['completed_at'] is None or type(receipt['duration_ms']) is not int or
             receipt['duration_ms'] < 0):
         raise ValueError('invalid persisted completion')
-    return inference._validated_usage({
+    return inference.validate_usage({
         'input_tokens': receipt['input_tokens'], 'output_tokens': receipt['output_tokens'],
         'state_tokens_dropped': receipt['state_tokens_dropped'],
         'truncated': None if value is None else bool(value),
@@ -43,14 +43,14 @@ def recover(call_id: str) -> Decimal:
                               row['model'], _rule(pricing))
         if call.rule.model != call.model:
             raise inference.CallStateConflict(call_id)
-        receipt = inference._receipt(cur, call)
+        receipt = inference.success_receipt(cur, call)
         if receipt is None:
             raise inference.CallStateConflict(call_id)
         try:
             values = _receipt_values(receipt)
         except (TypeError, ValueError):
             raise inference.CallStateConflict(call_id) from None
-        return inference._settle_success(cur, call, values)
+        return inference.settle_success_in_transaction(cur, call, values)
 
 
 def inspect_calls(limit: int = 100, call_id: str | None = None,
@@ -99,7 +99,7 @@ def _classify(row: dict[str, Any]) -> str:
                    completed_at=row['r_completed'], duration_ms=row['r_duration'])
     try:
         values = _receipt_values(receipt)
-        previous = inference._usage_values(row)
+        previous = inference.usage_values(row)
         if row['status'] in {'accepted', 'running'}:
             if (row['billing_status'] == 'pending' and row['charge_id'] is None and
                     (not any(v is not None for v in previous) or previous == values)):

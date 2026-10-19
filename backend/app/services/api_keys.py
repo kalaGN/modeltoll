@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core import security
+from app.core.time import iso_utc
 from app.db import session
 from app.services.accounts import utc_now
 
@@ -72,13 +73,6 @@ class ApiKeyRecord:
             "last_used_at": iso_utc(self.last_used_at),
             "revoked_at": iso_utc(self.revoked_at),
         }
-
-
-def iso_utc(value: datetime.datetime | None) -> str | None:
-    if value is None:
-        return None
-    text = value.replace(tzinfo=datetime.timezone.utc).isoformat(timespec="seconds")
-    return text.replace("+00:00", "Z")
 
 
 _SELECT_COLUMNS = (

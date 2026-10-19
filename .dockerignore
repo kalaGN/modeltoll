@@ -7,11 +7,6 @@
 !backend/app/**
 !backend/migrations/
 !backend/migrations/**
-!frontend/
-!frontend/package.json
-!frontend/package-lock.json
-!frontend/src/
-!frontend/src/**
 **/__pycache__/
 **/*.pyc
 **/.env

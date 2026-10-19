@@ -1,0 +1,25 @@
+.console-page, .login-page { background: var(--canvas); }
+.console-shell { display: flex; min-height: 100vh; }
+.console-sidebar { width: 230px; flex-shrink: 0; background: var(--ink); color: #f8f9f3; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; padding: 32px 16px 12px; }
+.brand { display: flex; align-items: center; gap: 14px; color: #f8f9f3; text-decoration: none; padding: 0 14px; }
+.brand-mark { width: 34px; height: 38px; color: var(--accent); flex-shrink: 0; }
+.brand strong { display: block; font-size: 30px; line-height: 1.1; letter-spacing: -1.5px; }
+.brand small { display: block; margin-top: 7px; font-size: 11px; letter-spacing: 1px; color: #c0c7b9; }
+.console-nav { display: flex; flex-direction: column; gap: 8px; margin-top: 52px; flex: 1; }
+.nav-link { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border-radius: 10px; color: #cbd1c5; font-size: 14px; text-decoration: none; transition: background .18s, color .18s; }
+.nav-link svg { width: 20px; height: 20px; }
+.nav-link:hover { color: #fff; background: #2a342d; }
+.nav-link.is-active { background: var(--accent); color: var(--ink); font-weight: 600; }
+.account-panel { display: flex; align-items: center; gap: 10px; border-top: 1px solid #384237; padding: 22px 8px 14px; font-size: 12px; }
+.account-avatar { display: grid; place-items: center; height: 30px; width: 30px; border-radius: 50%; background: #edf0e6; color: var(--ink); flex-shrink: 0; }
+#logout { color: #cbd1c5; }
+#logout:hover { color: var(--accent); }
+.console-workspace { flex: 1; min-width: 0; }
+.console-main { width: 100%; max-width: 1440px; margin: 0 auto; padding: 36px 48px 24px; }
+.console-main > * + * { margin-top: 28px; }
+.page-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.page-title { font-size: clamp(32px, 3.2vw, 52px); line-height: 1.15; font-weight: 700; letter-spacing: -1.8px; margin: 0 0 14px; }
+
+.heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.console-switch { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; white-space: nowrap; }
+.console-switch:hover { background: #edf1d6; }

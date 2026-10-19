@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -11,9 +10,8 @@ from typing import Any
 import pymysql
 
 from app.core import config, security
+from app.core.validation import normalize_email, valid_email_shape
 from app.db import session
-
-_EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class AuthError(Exception):
@@ -59,15 +57,6 @@ class User:
 
 def utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-
-
-def normalize_email(email: str) -> str:
-    # 仅去首尾空白并转小写；按需求不合并点号、加号或重音别名。
-    return email.strip().lower()
-
-
-def valid_email_shape(email: str) -> bool:
-    return bool(email) and len(email) <= config.EMAIL_MAX and bool(_EMAIL_SHAPE.match(email))
 
 
 def _throttle_key(normalized_email: str, source: str) -> str:

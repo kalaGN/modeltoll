@@ -1,0 +1,43 @@
+.button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; padding: 12px 23px; background: var(--accent); color: var(--ink); font-size: 14px; font-weight: 600; border: 1px solid transparent; border-radius: 8px; flex-shrink: 0; transition: background .18s, transform .18s; }
+.button-primary:hover:not(:disabled) { background: #c5e64f; transform: translateY(-1px); }
+.button-primary span { font-size: 24px; line-height: 1; font-weight: 400; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px 0; gap: 0; }
+.metric-grid:has(#stat-succeeded) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.metric { min-width: 0; padding: 0 24px; border-left: 1px solid var(--border); }
+.metric [id^="stat-"] { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: clamp(24px, 3vw, 42px); letter-spacing: -1.8px; font-weight: 600; margin-top: 12px; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric #stat-amount { font-size: clamp(22px, 2.6vw, 36px); }
+.safety-notice { display: flex; align-items: flex-start; gap: 12px; background: #edf1d6; color: #3d4826; padding: 16px 20px; border-radius: 8px; font-size: 13px; line-height: 1.65; }
+.safety-notice:has(#price-banner) { display: block; }
+.console-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 24px; overflow: hidden; }
+.console-panel h2, .integration-panel h2 { font-size: 19px; font-weight: 600; letter-spacing: -.4px; }
+.panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.table-scroll { margin-top: 20px; overflow-x: auto; }
+.records-table { width: 100%; text-align: left; font-size: 12px; border-collapse: collapse; white-space: nowrap; }
+.records-table thead { background: #f7f8f2; color: var(--muted); font-size: 11px; }
+.records-table th { padding: 13px 12px; font-weight: 500; }
+.records-table td { padding: 18px 12px; border-top: 1px solid #eceee5; }
+.records-table tbody tr { transition: background .16s; }
+.records-table tbody tr:hover { background: #f8faf2; }
+.records-table td button { min-width: 64px; min-height: 44px; }
+.records-table td:first-child { font-weight: 500; }
+.status-badge { display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 20px; background: #eef2e5; color: #435138; font-size: 11px; }
+.status-active, .status-succeeded { background: #edf6df; color: #356029; }
+.status-revoked { background: #eff0ed; color: #62695e; }
+.status-revoked > span { background: #73776d; }
+.status-failed, .status-interrupted { background: #fff0e9; color: #b42318; }
+.integration-panel { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 1.6fr); gap: 32px; padding: 28px; background: var(--ink); color: #f4f6ed; border-radius: 9px; }
+.integration-intro { align-self: center; }
+.integration-intro p { color: #bec7b8; line-height: 1.8; font-size: 12px; }
+.integration-code { min-width: 0; border: 1px solid #3b463a; border-radius: 7px; }
+#example { overflow-x: auto; padding: 18px; margin: 0; font: 12px/1.9 "SFMono-Regular", Consolas, monospace; color: var(--accent); min-height: 90px; }
+.filter-panel { display: flex; flex-wrap: wrap; align-items: end; gap: 18px; padding: 20px 24px; background: #eceee5; border: 1px solid var(--border); border-radius: 9px; }
+.filter-panel > * { min-width: 0; }
+.filter-panel input, .filter-panel select { max-width: 100%; }
+.console-panel > .flex { flex-wrap: wrap; gap: 12px; }
+.console-panel > .flex > span.flex { flex-wrap: wrap; }
+.console-main > p:last-child { text-align: left; font-size: 11px; line-height: 1.8; }
+.modal-overlay { position: fixed; inset: 0; z-index: 20; align-items: center; justify-content: center; background: rgb(12 22 13 / .6); padding: 24px; backdrop-filter: blur(5px); }
+.modal-overlay > div { max-height: calc(100dvh - 48px); overflow-y: auto; border-radius: 12px; padding: 28px; }
+.modal-error { color: var(--danger); background: #fff1ed; padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+.skip-link { position: fixed; top: 12px; left: 12px; padding: 12px; background: var(--accent); z-index: 50; transform: translateY(-180%); border-radius: 6px; }
+.skip-link:focus { transform: translateY(0); }

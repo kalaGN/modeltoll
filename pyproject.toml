@@ -1,0 +1,4 @@
+# Tool configuration only: this repository runs from backend/, not an installable package.
+# Production dependencies remain exclusively in requirements-api.txt.
+[tool.uv.pip]
+python = ".venv/bin/python"

@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Any
 
 from app.core import config, security
+from app.core.time import iso_utc
 from app.db import session
 from app.services import api_keys, billing
 from app.services.accounts import utc_now
@@ -184,7 +185,7 @@ def _call_item(row: dict[str, Any]) -> dict[str, Any]:
         "api_key": security_display(row),
         "endpoint": row["endpoint"],
         "model": row["model"],
-        "started_at": api_keys.iso_utc(row["started_at"]),
+        "started_at": iso_utc(row["started_at"]),
         "status": row["status"],
         "http_status": row["http_status"],
         "error_code": row["error_code"],
@@ -264,7 +265,7 @@ def billing_charges(
             {
                 "request_id": row["call_id"],
                 "api_key": security_display(row),
-                "started_at": api_keys.iso_utc(row["started_at"]),
+                "started_at": iso_utc(row["started_at"]),
                 "billable_tokens": int(row["billable_input_tokens"]),
                 "unit_tokens": int(row["unit_tokens"]),
                 "unit_price_yuan": str(Decimal(str(row["unit_price_yuan"]))),

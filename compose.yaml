@@ -1,4 +1,29 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+    image: ${LAYA_FRONTEND_IMAGE:-laya-frontend:local}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8080"
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - edge
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   app:
     build:
       context: .
@@ -7,6 +32,8 @@ services:
     init: true
     environment:
       LAYA_RUNTIME: external
+      # API has no host port; only the controlled edge proxy can supply client IPs.
+      FORWARDED_ALLOW_IPS: "*"
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
       MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in your env file}
@@ -15,8 +42,9 @@ services:
       UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
       LAYA_USER_RPM: ${LAYA_USER_RPM-0}
       LAYA_USER_MAX_INFLIGHT: ${LAYA_USER_MAX_INFLIGHT-0}
-    ports:
-      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    networks:
+      - edge
+      - data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -37,6 +65,8 @@ services:
 
   db:
     image: mysql:8.4
+    networks:
+      - data
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in your env file}
@@ -60,3 +90,8 @@ services:
 
 volumes:
   mysql_data:
+
+networks:
+  edge:
+  data:
+    internal: true

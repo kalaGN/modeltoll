@@ -9,7 +9,7 @@ import sys
 import warnings
 
 from app.core import config
-from app.db import models
+from app.db import migrations
 from app.services import bootstrap, inference_recovery
 
 
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("恢复参数无效")
     try:
         if args.command == "migrate":
-            models.init_db()
+            migrations.init_db()
             print("数据库迁移完成")
         elif args.command == "recover-calls":
             if args.apply:

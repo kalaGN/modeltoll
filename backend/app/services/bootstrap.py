@@ -5,9 +5,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from app.core import config, security
+from app.core import config, security, validation
 from app.db import session
-from app.services import accounts
 
 # 按当前数据库隔离，摘要后总长度为 55，符合 MySQL 命名锁 64 字符上限。
 _LOCK_NAME_SQL = "CONCAT('laya:init-admin:', LEFT(SHA2(DATABASE(), 256), 40))"
@@ -28,8 +27,8 @@ class BootstrapResult:
 def init_admin(email: str, password: str) -> BootstrapResult:
     if not isinstance(email, str):
         raise BootstrapError("邮箱格式不正确")
-    normalized = accounts.normalize_email(email)
-    if any(c in email for c in "\r\n") or not accounts.valid_email_shape(normalized):
+    normalized = validation.normalize_email(email)
+    if any(c in email for c in "\r\n") or not validation.valid_email_shape(normalized):
         raise BootstrapError("邮箱格式不正确")
     if not isinstance(password, str) or not config.PASSWORD_MIN <= len(password) <= config.PASSWORD_MAX:
         raise BootstrapError(f"密码长度须为 {config.PASSWORD_MIN}–{config.PASSWORD_MAX} 个字符")

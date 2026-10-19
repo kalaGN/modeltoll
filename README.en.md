@@ -53,14 +53,18 @@ npm --prefix frontend run build
 LAYA_RUNTIME=external zsh run-api
 ```
 
+In another terminal, run `npm --prefix frontend run dev` to serve the independent frontend and proxy API requests.
+
 To use an already installed and cached local Laya model, run `zsh run-api` instead.
-Login: `http://127.0.0.1:8000/login`. API documentation: `http://127.0.0.1:8000/docs`.
+Local login: `http://127.0.0.1:5173/login`. API documentation: `http://127.0.0.1:8000/docs`.
+Docker uses a separate Nginx frontend on `APP_PORT`; the Python API image contains no pages.
 
 ## Verification
 
 ```bash
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
 npm --prefix frontend run build
+npm --prefix frontend test
 ```
 
 ## Documentation

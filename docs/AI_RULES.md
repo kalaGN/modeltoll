@@ -27,9 +27,27 @@
 - 代码按 [架构设计](20261002-Laya平台-设计.md) 组织：后端在 `backend/app`
   （`api/v1`、`core`、`db`、`schemas`、`services`），前端在 `frontend/`，
   启动器与客服 CLI 留在根目录。不建空壳层，不提前创建未实现的模块。
+- 前端按 [工程结构设计](20261018-工程结构整理-设计.md) 组织：HTML 仅放
+  `src/pages/templetes/`，页面模块在 `pages/`，公共 HTTP/lib/UI/console 在 `shared/`，
+  分职责 CSS 在 `styles/`。页面可依赖公共模块，公共模块不得反向依赖页面。
+  模块导入不得自动绑定事件或请求；页面显式初始化一次。品牌读取失败不阻断登录。
+  不增加框架/路由/store 空壳；确有重复或独立测试价值才抽取新模块。
+- 构建只发布 HTML、运行时 JS、CSS 和实际静态资源，不发布 tests/scripts/私有配置。
+  模板源码集中不改变 dist 根级 HTML 文件名；watch 必须覆盖嵌套 HTML/JS/CSS。
+- 用户已确认[彻底分离](20261018-前后端分离-设计.md)：后端不设 web/，不读取 dist、不返回业务页面。
+  前端独立静态托管并同源代理 API，不新增宽泛 CORS。首次 CSRF、根路径导航和角色导航在前端；
+  所有管理/个人 API 仍必须服务端鉴权，公开页面壳不等于数据公开。
+- API 容器不包含 Node 或前端产物；Nginx 前端和 Python 后端独立构建。
+  Compose 的 app/db 禁止发布宿主端口；仅受控边缘代理覆盖转发头，内部 API 才可配置代理信任。
+  禁止重试/缓存推理请求，保持 Cookie、CSRF、请求 ID、原状态码和浏览器入口的重定向地址。
 - API 可依赖客服模块和 Laya；客服模块不得反向依赖 API，避免循环引用。
 - 业务分流使用既有阈值；改阈值需要说明验收样本和影响，不凭模型结果发明政策。
 - 新抽象必须有重复逻辑、真实替换需求或独立测试价值；不为一次调用建空层。
+- 后端职责按[职责修复设计](20261018-后端职责修复-设计.md)：路由不互相依赖，
+  共用 HTTP 协调归 api/inference_support.py；schemas 不依赖 services/db/api。
+  integrations 不依赖 services/db/api/main，传输不掌握业务事务；结算与恢复共用
+  services/inference.py 的公开内部事务接口。品牌与管理员总览分别归属独立服务。
+  db/migrations.py 只执行已有 DDL；启动仍执行迁移，本轮未改变部署策略。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
 - 持久化为 MySQL `laya_platform`，当前十三张表：设计 §2 的 `users`、`user_sessions`、
@@ -64,6 +82,11 @@
 ## 测试与验证
 
 - 已有 `backend/tests` 标准库 unittest 密钥删除、管理员权限与品牌配置回归套件，`customer_service_test.py` 是 CLI 演示，不是测试。
+- 后端测试按 unit/contract/integration/e2e 分类，support 只含测试辅助；测试模块不裸导入
+  另一个 test 文件。根路径统一用 `tests.support.paths.ROOT`，不要依赖文件深度。
+  默认命令保持递归发现；分类执行使用 `-t backend` 保持包导入一致。
+- 前端 `npm run build` 后执行 `npm test`（Node 内置测试，无新增依赖）；它验证纯逻辑和
+  模块/产物契约，不能替代 `tests/browser/smoke.mjs` 的真实浏览器交互验证。
 - 新功能覆盖正常、非法、边界输入及错误映射，用可复现命令记录验证。鉴权与多租户变更
   必须验证跨用户隔离、撤销即时生效与队列期间失效（拿到锁后重检），不能只测正常路径。
 - Bug 流程：复现 → 失败测试 → 根因 → 最小修复 → 相关验证 → 全量已有回归。

@@ -1,0 +1,53 @@
+@media (min-width: 1700px) { .console-main { padding-top: 40px; } }
+@media (max-width: 1100px) {
+  .console-sidebar { width: 200px; padding-inline: 12px; }
+  .console-main { padding: 40px 28px 24px; }
+  .integration-panel { grid-template-columns: 1fr; gap: 20px; }
+  .login-brand { padding: 40px; }
+  .signal-art { margin-inline: -40px; }
+}
+@media (max-width: 800px) {
+  .console-shell { flex-direction: column; }
+  .console-sidebar { position: static; width: 100%; height: auto; padding: 20px 20px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .brand { padding: 0; }
+  .brand strong { font-size: 24px; }
+  .brand small { font-size: 10px; }
+  .brand-mark { width: 27px; height: 32px; }
+  .account-panel { justify-self: end; align-self: start; width: 100%; min-width: 0; max-width: 220px; border: 0; padding: 0; }
+  .account-avatar { display: none; }
+  .console-nav { grid-column: 1 / -1; grid-row: 2; flex-direction: row; margin: 0; gap: 6px; }
+  .nav-link { flex: 1; justify-content: center; padding: 12px 8px; font-size: 12px; gap: 6px; }
+  .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .console-main { padding: 32px 24px 20px; }
+  .login-layout { grid-template-columns: 1fr; }
+  .login-brand { padding: 28px; }
+  .login-statement { margin-top: 40px; }
+  .login-statement h1 { font-size: 38px; }
+  .signal-art { display: none; }
+  .login-capabilities { margin-top: 32px; }
+  .login-form-panel { padding: 40px 24px 32px; }
+}
+@media (max-width: 520px) {
+  .console-main { padding-inline: 18px; }
+  .page-heading { flex-direction: column; align-items: stretch; gap: 22px; }
+  .page-heading .button-primary { align-self: flex-start; }
+  .page-title { font-size: 34px; letter-spacing: -1px; }
+  .metric { padding: 0 12px; }
+  .metric:first-child { padding-left: 12px; }
+  .metric [id^="stat-"] { font-size: 28px; letter-spacing: -1px; }
+  .metric-grid:has(#stat-succeeded) { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 24px; }
+  .metric-grid:has(#stat-amount) { grid-template-columns: 1fr; row-gap: 24px; }
+  .metric #stat-amount { font-size: 28px; }
+  .console-panel { padding: 18px 14px; }
+  .integration-panel { padding: 22px 18px; }
+  .filter-panel { padding: 18px; flex-direction: column; align-items: stretch; }
+  .filter-panel select { width: 100%; }
+  .filter-panel input { width: 100%; min-width: 0; padding-inline: 8px; }
+  .filter-panel > span > span { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .safety-notice { padding: 14px; }
+  .modal-overlay { padding: 16px; }
+  .modal-overlay > div { padding: 24px; max-height: calc(100dvh - 32px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

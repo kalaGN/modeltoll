@@ -1,0 +1,45 @@
+/* 管理员平台总览与品牌配置 */
+.brand-logo { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
+.brand-mark[hidden], .brand-logo[hidden], .brand-preview img[hidden], .logo-thumbnail img[hidden] { display: none; }
+.brand strong { overflow-wrap: anywhere; }
+.brand small { overflow-wrap: anywhere; max-width: 150px; }
+.admin-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.admin-metrics .metric > span { display: block; }
+.admin-metrics .metric-label { color: var(--muted); font-size: 13px; }
+.admin-metrics small { display: block; color: var(--muted); font-size: 11px; margin-top: 12px; }
+.admin-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.admin-charts svg { width: 100%; margin-top: 24px; min-height: 180px; }
+.button-secondary { padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: white; }
+.settings-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.settings-form { display: grid; gap: 24px; margin-top: 28px; }
+.settings-form label { display: block; font-size: 14px; font-weight: 500; }
+.settings-form .connection-toggle { display: flex; align-items: center; gap: 8px; }
+.settings-input { display: block; width: 100%; background: white; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; font-size: 14px; }
+.settings-input:focus { outline: 2px solid #9cac87; outline-offset: 2px; }
+.admin-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 12px; color: var(--muted); }
+.admin-pagination > div { display: flex; gap: 8px; }
+.admin-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.admin-audit-reason { white-space: normal; min-width: 180px; max-width: 320px; overflow-wrap: anywhere; }
+.admin-action-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 28px; border: 1px solid var(--border); border-radius: 12px; background: white; color: var(--ink); overflow-y: auto; }
+.admin-action-dialog::backdrop { background: rgb(12 22 13 / .6); backdrop-filter: blur(5px); }
+.admin-action-dialog h2 { font-size: 21px; font-weight: 600; }
+.admin-action-dialog p, #keys-owner, #management-feedback { overflow-wrap: anywhere; }
+.settings-help { color: var(--muted); font-size: 12px; line-height: 1.8; margin-top: 12px; }
+.logo-picker { display: flex; gap: 18px; align-items: start; margin-top: 14px; min-width: 0; }
+.logo-picker > div:last-child { min-width: 0; }
+.logo-picker input { font-size: 12px; width: 100%; }
+.logo-picker button { margin-top: 12px; }
+.logo-thumbnail { width: 72px; height: 72px; flex-shrink: 0; border-radius: 12px; background: #eef1e5; display: grid; place-items: center; font-size: 12px; }
+.logo-thumbnail img { max-width: 60px; max-height: 60px; object-fit: contain; }
+.brand-preview { margin-top: 28px; padding: 48px 24px; border-radius: 9px; background: var(--ink); color: white; text-align: center; overflow-wrap: anywhere; }
+.brand-preview img { width: 64px; height: 64px; object-fit: contain; margin: 0 auto 20px; }
+.brand-preview strong { display: block; font-size: 32px; }
+.brand-preview p { font-size: 13px; color: #cbd1c5; margin-top: 14px; white-space: pre-wrap; }
+.preview-default { display: block; color: var(--accent); font-size: 44px; margin-bottom: 20px; }
+@media (max-width: 1000px) { .admin-charts, .settings-layout { grid-template-columns: 1fr; } }
+@media (max-width: 520px) {
+ .admin-metrics, .admin-metrics:has(#stat-amount) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 0; }
+ .logo-picker { flex-direction: column; }
+ .console-nav { flex-wrap: wrap; }
+ .admin-charts svg { min-height: 150px; }
+}

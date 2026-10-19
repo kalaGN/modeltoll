@@ -11,7 +11,6 @@ APP_DIR = Path(__file__).resolve().parents[1]
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_DIR = BACKEND_DIR.parent
 MIGRATIONS_DIR = BACKEND_DIR / "migrations"
-FRONTEND_DIST = PROJECT_DIR / "frontend" / "dist"
 
 SUPPORTED_DEVICES = {"mps", "cpu"}
 

@@ -1,0 +1,13 @@
+**
+!Dockerfile
+!nginx.conf
+!package.json
+!package-lock.json
+!src/
+!src/**
+!scripts/
+!scripts/build.mjs
+**/.env
+**/.env.*
+**/*.key
+**/*.pem

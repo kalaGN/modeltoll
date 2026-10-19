@@ -1,0 +1,9 @@
+body { margin: 0; font-family: var(--font-sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), select { cursor: pointer; }
+button, input, select { min-height: 44px; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+:where(a, button, input, select, [tabindex]):focus-visible { outline: 3px solid #597524; outline-offset: 4px; }
+
+@keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.console-main, .login-statement { animation: arrive .24s ease-out; }

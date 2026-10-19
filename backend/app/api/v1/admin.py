@@ -1,40 +1,18 @@
-"""管理员总览、品牌配置与公开品牌展示。"""
+"""管理员总览与品牌配置写入；公开品牌在 platform 路由。"""
 from __future__ import annotations
 
 import datetime
 import json
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from app.api import dependencies
-from app.services import accounts, platform, statistics
+from app.schemas.platform import SettingsRequest
+from app.services import accounts, admin_overview, branding, statistics
 
 router = APIRouter(tags=["platform"])
 MAX_BODY = 3 * 1024 * 1024
-
-
-class SettingsRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-    name: str = Field(min_length=1, max_length=60)
-    description: str = Field(default="", max_length=200)
-    logo_data_url: str | None = Field(default=None, max_length=2800000)
-
-
-@router.get("/v1/platform/branding")
-def branding():
-    return {"code": "ok", "branding": platform.branding()}
-
-
-@router.get("/v1/platform/logo")
-def logo():
-    image = platform.logo()
-    if image is None:
-        raise HTTPException(status_code=404, detail="未设置 Logo")
-    return Response(image, media_type="image/png",
-                    headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache"})
 
 
 @router.get("/v1/admin/overview")
@@ -49,7 +27,7 @@ def overview(
         raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from None
     if end - start > datetime.timedelta(days=366):
         raise HTTPException(status_code=400, detail={"code": "invalid_range", "message": "时间范围不能超过 366 天"})
-    return {"code": "ok", **platform.overview(start, end)}
+    return {"code": "ok", **admin_overview.overview(start, end)}
 
 
 @router.put("/v1/admin/settings", openapi_extra={
@@ -76,7 +54,7 @@ async def settings(
         raise HTTPException(status_code=422, detail="平台名称、简介或 Logo 输入无效") from None
     # 解码图片及同步数据库操作放在线程池，避免阻塞 ASGI 事件循环。
     try:
-        saved = await run_in_threadpool(platform.save_settings, body.name, body.description, body.logo_data_url)
-    except platform.InvalidLogo as exc:
+        saved = await run_in_threadpool(branding.save_settings, body.name, body.description, body.logo_data_url)
+    except branding.InvalidLogo as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     return {"code": "ok", "branding": saved}

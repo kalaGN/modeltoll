@@ -3,21 +3,38 @@
 ## 项目与事实来源
 
 - 项目目标是 Laya API Key 管理与计费平台；已实现模型 HTTP API、CLI、邮箱密码登录、
-  API Key 生命周期与 Bearer 推理鉴权、调用记录、Decimal 计费、统计查询和四个页面。
+  API Key 生命周期与 Bearer 推理鉴权、调用记录、Decimal 计费、统计查询和独立前端。
 - 已确认目标见 [平台需求](docs/20261002-Laya平台-需求.md)，不要把待实现功能当现状。
 - 当前环境：Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、
   MySQL 9.6.0、Node 22.22.3。
 - 版本是 2026-10-02 的安装快照，非锁定版本；以实际依赖元数据复核。
 - `backend/app/`：后端。`main.py` 组装与 lifespan，`api/v1/` 路由，`schemas/` 契约，
-  `services/` 账号/客服规则/模型运行时，`core/` 配置与哈希，`db/` 连接与建表。
+  `services/` 账号/客服规则/模型运行时与账务，`core/` 配置/哈希/纯校验/UTC 格式化，
+  `db/session.py` 连接与事务、`db/migrations.py` 执行既有 SQL。
+- `api/inference_support.py` 共享推理 HTTP 协调；路由不得互相导入内部函数。
+  `schemas/` 不依赖 services/db；`integrations/openai_client.py` 负责上游协议与传输，
+  不依赖服务或数据库。`services/branding.py` 管理品牌，`admin_overview.py` 管理平台聚合。
 - `backend/migrations/`：可审查 DDL 与回滚，是表结构唯一来源。
-- `frontend/`：Tailwind 页面，`npm run build` 产出 `dist/`，未构建时 `/login` 返回 500。
+- `frontend/`：独立 Tailwind 前端，`npm run build` 产出 `dist/`；后端不托管页面或 /assets。
+  HTML 源码固定在 `frontend/src/pages/templetes/`（用户指定拼写）；页面入口在 `pages/`，
+  公共模块在 `shared/`，样式在 `styles/`，`input.css` 为唯一 CSS 构建入口。
+  使用原生 ES Modules，每个模板只加载自己的入口，不依赖全局函数或另一个页面入口。
+  构建将模板输出到 `dist/*.html`、模块保留嵌套路径；开发服务器仅监听 5173 loopback，
+  代理到 8000 API；生产由独立 Nginx 镜像托管。保持 pages/templetes 拼写。
+  页面导航与角色守卫在前端，数据权限仍由 API 验证；首次访问通过 /v1/auth/csrf 初始化。
+- `backend/tests/{unit,contract,integration,e2e}`：分类回归，`support/` 存共享合成辅助代码；
+  默认 unittest 入口仍可发现全部用例，真实 MySQL/容器测试需显式 opt-in。
+- `.python-version` 固定开发解释器系列 3.12；`pyproject.toml` 仅配置 uv pip 默认虚拟环境，
+  不是打包或依赖锁文件。依赖唯一来源仍为 `requirements-api.txt`，不改用 `uv sync`。
 - `customer_service_test.py`：客服分析 CLI 入口，业务规则已迁到
   `backend/app/services/customer_service.py`；并非自动化测试。
 - `run-api` / `run-laya`：启动脚本，`run-api` 以 `PYTHONPATH=backend` 启动 `app.main:app`；
   `requirements-api.txt` 声明 API、鉴权与数据库驱动依赖。
 - `backend/app/manage.py`：显式迁移、首个管理员与recover-calls CLI；恢复默认只读，--apply仅恢复可信成功回执的单调用，不接受密码命令行参数，不自动提升已有普通用户权限。
-- `Dockerfile` / `compose.yaml`：仅 external 模式的容器部署，默认宿主 loopback、独立 MySQL；私有配置用 `.env.deploy`，不可覆盖本机 `.env`。
+- `Dockerfile` 只构建 Python API；`frontend/Dockerfile` 构建 Nginx 前端。
+  `compose.yaml` 仅 external 模式，frontend 对宿主 loopback 发布 APP_PORT，app/db 不发布端口。
+  FORWARDED_ALLOW_IPS=* 仅用于此受控内部代理网络，不用于直接对外暴露的 API。
+  私有配置用 `.env.deploy`，不可覆盖本机 `.env`，不删除既有 MySQL 卷。
 - `.env`：本机 MySQL 凭据，已被 Git 忽略；未配置数据库凭据时启动失败，容器由环境变量提供。
 
 ## 渐进加载
@@ -58,6 +75,9 @@ zsh -n run-api run-laya
 PYTHONPATH=backend .venv/bin/python -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ["customer_service_test.py", *sorted(pathlib.Path("backend").rglob("*.py"))]]'
 PYTHONPATH=backend .venv/bin/python -c 'import app.main as m; print(sorted(m.app.openapi()["paths"].keys()))'
 cd frontend && npm run build && cd ..
+npm --prefix frontend run dev
+node --test frontend/tests/unit/*.test.mjs frontend/tests/contract/*.test.mjs
+PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
 zsh run-api
 .venv/bin/python customer_service_test.py --json "请帮我退款"
 curl http://127.0.0.1:8000/health
@@ -68,3 +88,10 @@ curl http://127.0.0.1:8000/health
 端口被占用时可用 `zsh run-api --port 8010`，不要终止非本次会话启动的进程。
 提交前执行 `git diff --check` 与 `git diff --cached --check`，并审查暂存文件。
 只有用户明确要求时创建 Commit。
+
+前端开发监视用 `npm --prefix frontend run watch`，同步更新 HTML、嵌套 JS 和 CSS。
+dev 和 run-api 是独立长驻进程，分别在两个终端运行；本机页面入口是 5173，不是 8000/login。
+代理集成检查用 `npm --prefix frontend run test:server`（随机本机端口）；可选已有 Nginx 验证用
+`npm --prefix frontend run test:nginx`。两者均只操作合成环境，不启动 Docker 或访问真实账号。
+前端契约测试先构建再执行。浏览器隔离回归与现有 Playwright 运行库的使用见
+[工程结构任务](docs/20261018-工程结构整理-任务.md)，不读取真实账号或调用管理写接口。

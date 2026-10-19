@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 
 from app.core import config
-from app.services import accounts
+from app.core import validation
 
 
 class CredentialsRequest(BaseModel):
@@ -14,8 +14,8 @@ class CredentialsRequest(BaseModel):
 
     @model_validator(mode="after")
     def normalize_email(self):
-        normalized = accounts.normalize_email(self.email)
-        if not accounts.valid_email_shape(normalized):
+        normalized = validation.normalize_email(self.email)
+        if not validation.valid_email_shape(normalized):
             raise ValueError("邮箱格式不正确")
         self.email = normalized
         return self

@@ -50,7 +50,8 @@ class IdempotencyConflict(Exception):
         self.code, self.call_id = code, call_id
 
 
-def _receipt(cur: Any, call: Call) -> dict[str, Any] | None:
+def success_receipt(cur: Any, call: Call) -> dict[str, Any] | None:
+    """Read trusted success facts using the caller's transaction cursor."""
     cur.execute(
         "SELECT input_tokens, output_tokens, truncated, state_tokens_dropped,"
         " completed_at, duration_ms FROM inference_success_receipts WHERE call_id = %s",
@@ -59,7 +60,8 @@ def _receipt(cur: Any, call: Call) -> dict[str, Any] | None:
     return cur.fetchone()
 
 
-def _usage_values(row: dict[str, Any]) -> tuple:
+def usage_values(row: dict[str, Any]) -> tuple:
+    """Return usage fields in their persisted settlement order."""
     return tuple(row[key] for key in ('input_tokens', 'output_tokens', 'truncated',
                                      'state_tokens_dropped'))
 
@@ -147,7 +149,7 @@ def mark_running(call: Call) -> None:
     with session.transaction() as cur:
         row = _locked_call(cur, call)
         _require_active(cur, call, row)
-        if row['status'] != 'accepted' or _receipt(cur, call) is not None:
+        if row['status'] != 'accepted' or success_receipt(cur, call) is not None:
             raise CallStateConflict(call.id)
         cur.execute(
             "UPDATE api_calls SET status = 'running', updated_at = UTC_TIMESTAMP(3)"
@@ -169,30 +171,30 @@ def succeeded(call: Call, usage: dict[str, Any], http_status: int = 200) -> Deci
     失败，避免库内记 500 而 HTTP 仍回 200 的矛盾状态。
     """
     try:
-        values = _validated_usage(usage)
+        values = validate_usage(usage)
     except (TypeError, ValueError):
         failed(call, "usage_unavailable", http_status=500)
         raise UsageUnavailable(call.id)
     with session.transaction() as cur:
-        return _settle_success(cur, call, values, http_status)
+        return settle_success_in_transaction(cur, call, values, http_status)
 
 
 def capture_success(call: Call, usage: dict[str, Any]) -> None:
     """Persist a successful, serializable business result's usage without its payload."""
     try:
-        values = _validated_usage(usage)
+        values = validate_usage(usage)
     except (TypeError, ValueError):
         failed(call, 'usage_unavailable', 500)
         raise UsageUnavailable(call.id) from None
     with session.transaction() as cur:
         row = _locked_call(cur, call)
         _require_active(cur, call, row)
-        previous = _usage_values(row)
+        previous = usage_values(row)
         if any(value is not None for value in previous) and previous != values:
             raise CallStateConflict(call.id)
-        receipt = _receipt(cur, call)
+        receipt = success_receipt(cur, call)
         if receipt is not None:
-            if _usage_values(receipt) != values:
+            if usage_values(receipt) != values:
                 raise CallStateConflict(call.id)
             return
         cur.execute(
@@ -203,12 +205,15 @@ def capture_success(call: Call, usage: dict[str, Any]) -> None:
         )
 
 
-def _settle_success(cur: Any, call: Call, values: tuple, http_status: int = 200) -> Decimal:
-    """Shared transaction body for normal settlement and explicitly authorized recovery."""
+def settle_success_in_transaction(cur: Any, call: Call, values: tuple, http_status: int = 200) -> Decimal:
+    """Settle with the caller-owned transaction; never open or commit a connection.
+
+    Normal settlement and explicit receipt recovery share this exact implementation.
+    """
     billable, output_tokens, truncated, dropped = values
     row = _locked_call(cur, call)
-    receipt = _receipt(cur, call)
-    if receipt is not None and _usage_values(receipt) != values:
+    receipt = success_receipt(cur, call)
+    if receipt is not None and usage_values(receipt) != values:
         raise CallStateConflict(call.id)
     if row['status'] == 'succeeded':
         charge = _charge(cur, call)
@@ -229,7 +234,7 @@ def _settle_success(cur: Any, call: Call, values: tuple, http_status: int = 200)
             raise CallStateConflict(call.id)
         return Decimal(str(charge['amount_yuan']))
     _require_active(cur, call, row)
-    previous = _usage_values(row)
+    previous = usage_values(row)
     if any(value is not None for value in previous) and previous != values:
         raise CallStateConflict(call.id)
     completed = 'completed_at = %s,' if receipt else 'completed_at = UTC_TIMESTAMP(3),'
@@ -267,7 +272,7 @@ def failed(call: Call, error_code: str, http_status: int) -> Decimal:
     reason = "usage_unavailable" if usage_unknown else "policy_succeeded_only"
     with session.transaction() as cur:
         row = _locked_call(cur, call)
-        if _receipt(cur, call) is not None:
+        if success_receipt(cur, call) is not None:
             raise CallStateConflict(call.id)
         if _same_terminal(cur, call, row, 'failed', error_code[:64], http_status,
                           billing_status, reason):
@@ -287,7 +292,7 @@ def interrupted(call: Call, error_code: str, http_status: int) -> Decimal:
     """运行前被撤销或运行被中止：写入可恢复终态，不产生费用。"""
     with session.transaction() as cur:
         row = _locked_call(cur, call)
-        if _receipt(cur, call) is not None:
+        if success_receipt(cur, call) is not None:
             raise CallStateConflict(call.id)
         if _same_terminal(cur, call, row, 'interrupted', error_code[:64], http_status,
                           'not_billable', error_code[:64]):
@@ -305,12 +310,12 @@ def interrupted(call: Call, error_code: str, http_status: int) -> Decimal:
 
 def keep_usage(call: Call, usage: dict[str, Any]) -> None:
     """推理已产出用量但后续分支失败时保留已知用量，不默认写 0（设计 §7）。"""
-    values = _validated_usage(usage)
+    values = validate_usage(usage)
     with session.transaction() as cur:
         row = _locked_call(cur, call)
         _require_active(cur, call, row)
-        receipt = _receipt(cur, call)
-        if receipt is not None and _usage_values(receipt) != values:
+        receipt = success_receipt(cur, call)
+        if receipt is not None and usage_values(receipt) != values:
             raise CallStateConflict(call.id)
         previous = tuple(row[key] for key in ('input_tokens', 'output_tokens', 'truncated',
                                              'state_tokens_dropped'))
@@ -340,7 +345,7 @@ def _same_terminal(cur: Any, call: Call, row: dict[str, Any], status: str,
     return True
 
 
-def _validated_usage(usage: dict[str, Any]) -> tuple[int, int | None, int | None, int | None]:
+def validate_usage(usage: dict[str, Any]) -> tuple[int, int | None, int | None, int | None]:
     if not isinstance(usage, dict):
         raise ValueError('invalid usage')
     values = []

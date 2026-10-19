@@ -3,10 +3,14 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Laya 平台前端页面，Tailwind CSS 构建后由同源后端提供静态文件",
+  "description": "Laya 独立前端，开发服务器或 Nginx 提供页面并同源代理 API",
   "scripts": {
-    "build": "mkdir -p dist && tailwindcss -i ./src/input.css -o ./dist/app.css --minify && cp src/*.html src/*.js dist/",
-    "watch": "tailwindcss -i ./src/input.css -o ./dist/app.css --watch"
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node --test tests/unit/*.test.mjs tests/contract/*.test.mjs",
+    "test:server": "node --test tests/integration/*.test.mjs",
+    "test:nginx": "node tests/integration/nginx-check.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",

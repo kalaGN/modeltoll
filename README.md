@@ -51,14 +51,18 @@ npm --prefix frontend run build
 LAYA_RUNTIME=external zsh run-api
 ```
 
+另一个终端运行 `npm --prefix frontend run dev`，启动独立前端并代理 API。
+
 使用已安装且缓存的本地 Laya 模型时，运行 `zsh run-api`。
-登录地址：`http://127.0.0.1:8000/login`；接口文档：`http://127.0.0.1:8000/docs`。
+本机登录：`http://127.0.0.1:5173/login`；接口文档：`http://127.0.0.1:8000/docs`。
+容器由独立 Nginx 前端提供 `APP_PORT` 入口，Python API 不包含页面。
 
 ## 验证
 
 ```bash
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
 npm --prefix frontend run build
+npm --prefix frontend test
 ```
 
 ## 文档

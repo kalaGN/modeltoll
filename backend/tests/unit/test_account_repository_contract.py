@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from sqlalchemy.dialects import mysql
 
 from app.repositories import accounts as repository, api_keys as key_repository
-from app.services import accounts
+from app.services.access import accounts
 
 
 class AccountRepositoryContractTests(unittest.TestCase):

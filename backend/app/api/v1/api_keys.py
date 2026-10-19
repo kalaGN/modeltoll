@@ -13,7 +13,7 @@ from app.api import dependencies
 from app.api.errors import http_error
 from app.api.responses import success
 from app.schemas.api_keys import CreateKeyRequest, RevokeRequest
-from app.services import accounts, api_keys
+from app.services.access import accounts, api_keys
 
 logger = logging.getLogger("laya.api.keys")
 router = APIRouter(prefix="/v1/api-keys", tags=["api-keys"])

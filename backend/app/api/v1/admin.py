@@ -12,7 +12,9 @@ from app.api.errors import error_content, http_error
 from app.api.request_body import read_limited_body
 from app.api.responses import success
 from app.schemas.platform import SettingsRequest
-from app.services import accounts, admin_overview, branding, statistics
+from app.services.access import accounts
+from app.services.platform import admin_overview, branding
+from app.services.metering import statistics
 
 router = APIRouter(tags=["platform"])
 MAX_BODY = 3 * 1024 * 1024

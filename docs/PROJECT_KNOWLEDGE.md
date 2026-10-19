@@ -11,6 +11,16 @@
 边界仍待产品确认。
 下文描述当前代码，不将需求目标冒充已具备的功能。
 
+## 2026-10-19 Service 业务分组
+
+按[业务分组设计](20261019-Service业务分组-设计.md)，15 个模块归入 access（4）、
+inference（7）、metering（2）、platform（2）；inference.py 重命名为 inference/lifecycle.py，
+inference_recovery.py 改为 inference/recovery.py。调用方、CLI、测试 patch 与嵌入脚本导入
+同步更新，不保留旧根级文件或 __init__ 转发；core/time.py 统一 naive UTC 时钟。
+这是业务域分组的分层架构，不是完整 DDD；目录尚不代表已确认的限界上下文，表映射也
+不是领域聚合。没有新增领域事件、聚合根或值对象；Service/Repository 的事务职责不变。
+验证见[分组任务](20261019-Service业务分组-任务.md)，无接口、数据库、依赖与部署变化。
+
 ## 2026-10-19 ORM 分层
 
 按[ORM 设计](20261019-ORM分层-设计.md)切换全部业务持久化：API → Service → Repository →
@@ -33,11 +43,11 @@ Service 只识别业务结果和拥有事务，不导入 Model 或执行查询�
 实施依据为[职责修复设计](20261018-后端职责修复-设计.md)，不是全面落地旧分层草案。
 api/inference_support.py 共享推理 HTTP 协调，路由不互相导入；schemas/platform.py
 持有 SettingsRequest，schemas/auth.py 依赖 core/validation.py 而非账号服务。
-core/time.py 统一既有 UTC 格式化。services/gateway.py 管理连接和价格原子持久化，
+core/time.py 统一既有 UTC 格式化。services/inference/gateway.py 管理连接和价格原子持久化，
 上游传输、TLS、响应解析和协议校验归 integrations/openai_client.py；既有网关公开
 操作直接绑定适配器实现，无第二套传输逻辑。
 
-品牌服务为 services/branding.py，管理员聚合为 services/admin_overview.py；公开品牌路由
+品牌服务为 services/platform/branding.py，管理员聚合为 services/platform/admin_overview.py；公开品牌路由
 在 api/v1/platform.py，管理员设置与总览保留在 admin.py。db/migrations.py 是迁移执行器，
 不是 ORM 模型；后续 ORM 分层见上节。main/manage 入口、启动迁移策略与模型锁不变。
 恢复通过 inference 的 success_receipt/validate_usage/usage_values/settle_success_in_transaction
@@ -56,7 +66,7 @@ core/time.py 统一既有 UTC 格式化。services/gateway.py 管理连接和价
 
 同日后续用户确认四项全部优化：api/errors.py 提供显式错误内容和 HTTP 异常构造，
 api/request_body.py 提供有限字节读取；网关 256 KB/解析前和品牌 3 MB/鉴权及 CSRF 后
-的原执行顺序保留。services/admin_management.py 不再返回 code；API success 添加原成功字段。
+的原执行顺序保留。services/access/admin_management.py 不再返回 code；API success 添加原成功字段。
 统计四个接口使用 responses.utc_range，复用 core.time.iso_utc，范围解析与 UTC 政策不变。
 最终默认回归 224 项（220 通过、4 opt-in 跳过）、完整 OpenAPI 相同；未重启运行服务或
 操作真实数据库/模型，未提交。详细边界见[公共逻辑整理任务](20261019-公共逻辑整理-任务.md)。
@@ -133,7 +143,7 @@ JSON 响应 + `X-Request-Id`。事务不跨推理持有。
 lifespan 顺序是先 `db/migrations.init_db()` 执行迁移 SQL，再创建 `Router(max_loaded=1)`
 并加载 multilingual，保存到 `app.state`；任一失败都阻止应用启动。同步路由由框架在
 线程池中执行，推理锁把两类预测串行化。当前 lifespan 退出没有显式模型清理逻辑。
-`services/model_runtime.py` 持有推理锁与模型构建，`main.py` 注入运行时，
+`services/inference/model_runtime.py` 持有推理锁与模型构建，`main.py` 注入运行时，
 底层模块不反向 import app。
 
 数据库连接按操作获取并立即释放（`db/session.py` 的 `read_session()` 只读范围、
@@ -336,7 +346,7 @@ SQL 全部是 `backend/migrations/` 内的固定 DDL 与参数化语句，无字
 读取当前角色。管理员登录和根路由进入 /admin，普通账号进入 /keys；/admin/settings 是品牌配置页。
 页面与平台接口都校验管理员身份，管理写操作要求 CSRF；原个人统计范围不变。
 0005/0006 迁移在本机 MySQL 重复执行通过，迁移执行后既有用户保持普通角色；随后已按用户明确指定将首个账号设为管理员并验证，未修改其它账号。
-平台存量指标和窗口调用/费用、UTC 日趋势由 services/admin_overview.py 在只读事务中汇总；窗口最多 366 天。
+平台存量指标和窗口调用/费用、UTC 日趋势由 services/platform/admin_overview.py 在只读事务中汇总；窗口最多 366 天。
 平台配置为单行 MySQL 表，公开接口只读取三个品牌字段。名称、简介以 textContent 显示；Logo 限 2 MB、
 4096px，Pillow 12.3.0 重新编码并缩放到最多 512px PNG，去除元数据，不增加磁盘上传目录。
 

@@ -1,15 +1,23 @@
 """Shared rules retain the original contract after being moved out of services."""
 import datetime
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
 from app.core import config, validation
-from app.core.time import iso_utc
+from app.core.time import iso_utc, utc_now
 from app.schemas.auth import CredentialsRequest
 
 
 class SharedRulesTests(unittest.TestCase):
+    def test_utc_clock_preserves_naive_utc_and_microseconds(self):
+        now = datetime.datetime(2026, 10, 19, 2, 3, 4, 567000, tzinfo=datetime.timezone.utc)
+        with patch('app.core.time.datetime.datetime') as clock:
+            clock.now.return_value = now
+            self.assertEqual(utc_now(), now.replace(tzinfo=None))
+            clock.now.assert_called_once_with(datetime.timezone.utc)
+
     def test_email_normalization_does_not_merge_aliases(self):
         self.assertEqual(validation.normalize_email('  First.Last+Tag@EXAMPLE.COM  '),
                          'first.last+tag@example.com')

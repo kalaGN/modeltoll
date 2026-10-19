@@ -11,7 +11,7 @@ from app.core import security
 from app.core.time import iso_utc
 from app.db import session
 from app.repositories import api_keys as repository
-from app.services.accounts import utc_now
+from app.core.time import utc_now
 
 
 class ApiKeyError(Exception):

@@ -8,7 +8,8 @@ from fastapi import Depends, Request
 
 from app.api.errors import http_error
 from app.core import config, security
-from app.services import accounts, api_keys, request_limits
+from app.services.access import accounts, api_keys
+from app.services.inference import request_limits
 
 
 @contextmanager

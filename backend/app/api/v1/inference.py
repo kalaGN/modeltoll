@@ -12,7 +12,8 @@ from app.api import dependencies, inference_support
 from app.api.dependencies import require_api_key
 from app.api.errors import http_error
 from app.schemas.inference import CustomerServiceRequest, PredictRequest
-from app.services import api_keys, customer_service, inference, model_runtime
+from app.services.access import api_keys
+from app.services.inference import customer_service, lifecycle as inference, model_runtime
 
 router = APIRouter(tags=["inference"])
 

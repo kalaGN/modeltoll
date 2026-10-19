@@ -26,7 +26,8 @@ _SCENARIO = textwrap.dedent('''
     import uuid
     from sqlalchemy.exc import OperationalError
     from app.db import migrations, connection as native_connection
-    from app.services import api_keys, idempotency, inference, inference_recovery
+    from app.services.access import api_keys
+    from app.services.inference import idempotency, lifecycle as inference, recovery as inference_recovery
 
     # Report only exception type and line positions, never driver messages or values.
     def safe_failure(kind, error, traceback):
@@ -245,7 +246,8 @@ _SCENARIO = textwrap.dedent('''
     from unittest.mock import patch
     from app.main import app
     from app.schemas.gateway import ConnectionRequest
-    from app.services import billing, gateway
+    from app.services.metering import billing
+    from app.services.inference import gateway
     connection = ConnectionRequest(base_url='http://127.0.0.1:11434/v1',
                                    model='multilingual', enabled=True)
     request_body = {'model': 'multilingual', 'messages': [{'role': 'user', 'content': 'synthetic'}]}

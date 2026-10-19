@@ -8,7 +8,7 @@ import warnings
 from unittest.mock import MagicMock, patch
 
 from app import manage
-from app.services import bootstrap
+from app.services.access import bootstrap
 
 
 class ManageTests(unittest.TestCase):

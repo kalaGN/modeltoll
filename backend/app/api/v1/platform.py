@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from app.api.responses import success
-from app.services import branding as branding_service
+from app.services.platform import branding as branding_service
 
 router = APIRouter(tags=["platform"])
 

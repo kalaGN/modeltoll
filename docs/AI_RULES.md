@@ -46,8 +46,11 @@
 - 后端职责按[职责修复设计](20261018-后端职责修复-设计.md)：路由不互相依赖，
   共用 HTTP 协调归 api/inference_support.py；schemas 不依赖 services/db/api。
   integrations 不依赖 services/db/api/main，传输不掌握业务事务；结算与恢复共用
-  services/inference.py 的公开内部事务接口。品牌与管理员总览分别归属独立服务。
+  services/inference/lifecycle.py 的公开内部事务接口。品牌与管理员总览分别归属独立服务。
   db/migrations.py 只执行已有 DDL；启动仍执行迁移，本轮未改变部署策略。
+- Service 按[业务分组设计](20261019-Service业务分组-设计.md)归入 access、inference、metering、platform，
+  只增加一层包；__init__.py 不聚合导出或保留旧路径转发。通用 utc_now 属于 core/time.py，
+  不从账号服务导入。该分组不是完整 DDD，不将 ORM 表 Model 称为领域聚合。
 - 模型生命周期由 lifespan 管理，路由复用实例；禁止逐请求加载模型。
 - 推理保持同步并受同一线程锁保护；不要把阻塞推理直接放进异步处理函数。
 - 持久化为 MySQL `laya_platform`，当前十三张表：设计 §2 的 `users`、`user_sessions`、

@@ -15,7 +15,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db import session
 from app.repositories import calls as repository, billing as billing_repository
-from app.services import api_keys, billing
+from app.services.access import api_keys
+from app.services.metering import billing
 
 
 @dataclass

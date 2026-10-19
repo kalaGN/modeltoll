@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.dialects import mysql
 
 from app.repositories import accounts as repository
-from app.services import bootstrap
+from app.services.access import bootstrap
 
 
 class BootstrapTests(unittest.TestCase):

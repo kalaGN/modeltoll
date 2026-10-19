@@ -19,7 +19,7 @@ from app.api.v1 import gateway as gateway_routes
 from app.api.v1 import admin_management as admin_management_routes
 from app.core import config
 from app.db import migrations
-from app.services import model_runtime
+from app.services.inference import model_runtime
 
 logger = logging.getLogger("laya.api")
 

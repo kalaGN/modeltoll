@@ -8,7 +8,9 @@ from pymysql.err import IntegrityError as DriverIntegrityError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects import mysql
 from app.db import session
-from app.services import api_keys, billing, idempotency, inference
+from app.services.access import api_keys
+from app.services.metering import billing
+from app.services.inference import idempotency, lifecycle as inference
 
 
 class IdempotencyPreparationTests(unittest.TestCase):

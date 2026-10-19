@@ -7,7 +7,9 @@ import httpx
 
 from app.core import config
 from app.main import app
-from app.services import accounts, branding, gateway
+from app.services.access import accounts
+from app.services.platform import branding
+from app.services.inference import gateway
 
 ADMIN = accounts.User('fixture-admin', 'fixture@example.invalid', True)
 

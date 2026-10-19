@@ -35,7 +35,8 @@ _MYSQL_CHECK = textwrap.dedent('''
     import sys
     import uuid
     from app.db import migrations
-    from app.services import api_keys, inference, request_limits
+    from app.services.access import api_keys
+    from app.services.inference import lifecycle as inference, request_limits
 
     migrations.init_db()
     migrations.init_db()
@@ -120,7 +121,7 @@ _MYSQL_CHECK = textwrap.dedent('''
     # A separate Python interpreter shares only the persistent MySQL rows.
     restart_code = _CLOCK_SOURCE + """
     import os, sys
-    from app.services import request_limits
+    from app.services.inference import request_limits
     controlled_now = datetime.fromisoformat(sys.argv[2])
     with patch.object(limits_repository, 'now', clocked_now):
         try:

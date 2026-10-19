@@ -8,7 +8,7 @@ from typing import Any
 from app.core import security
 from app.db import session
 from app.repositories import administration as repository
-from app.services.accounts import utc_now
+from app.core.time import utc_now
 from app.core.time import iso_utc
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.dialects import mysql
 from fastapi.testclient import TestClient
 from app.api import dependencies
 from app.main import app
-from app.services import api_keys, accounts
+from app.services.access import api_keys, accounts
 
 KEY_ID = "00000000-0000-4000-8000-000000000001"
 USER_ID = "00000000-0000-4000-8000-000000000002"

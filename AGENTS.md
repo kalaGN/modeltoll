@@ -9,14 +9,14 @@
   MySQL 9.6.0、Node 22.22.3。
 - 版本是 2026-10-02 的安装快照，非锁定版本；以实际依赖元数据复核。
 - `backend/app/`：后端。`main.py` 组装与 lifespan，`api/v1/` 路由，`schemas/` 契约，
-  `services/` 账号/客服规则/模型运行时与账务，`core/` 配置/哈希/纯校验/UTC 格式化，
+  `services/{access,inference,metering,platform}/` 按业务域组织服务，`core/` 配置/哈希/纯校验/UTC 格式化，
   `models/` 每表一个 SQLAlchemy 映射，`repositories/` 按操作域查询/写入/锁与结果投影，
   `db/engine.py` 惰性 Engine、`db/session.py` 短 Session/事务，`db/migrations.py` 执行既有 SQL。
   Service 决定事务边界，不直接执行 SQL 或 ORM 查询；Repository 不自行提交或建立连接。
   `db/connection.py` 原生连接仅供迁移执行器使用，不供业务调用。
 - `api/inference_support.py` 共享推理 HTTP 协调；路由不得互相导入内部函数。
   `schemas/` 不依赖 services/db；`integrations/openai_client.py` 负责上游协议与传输，
-  不依赖服务或数据库。`services/branding.py` 管理品牌，`admin_overview.py` 管理平台聚合。
+  不依赖服务或数据库。`services/platform/branding.py` 管理品牌，`services/platform/admin_overview.py` 管理平台聚合。
 - `backend/migrations/`：可审查 DDL 与回滚，是表结构唯一来源。
 - `frontend/`：独立 Tailwind 前端，`npm run build` 产出 `dist/`；后端不托管页面或 /assets。
   HTML 源码固定在 `frontend/src/pages/templetes/`（用户指定拼写）；页面入口在 `pages/`，
@@ -30,7 +30,7 @@
 - `.python-version` 固定开发解释器系列 3.12；`pyproject.toml` 仅配置 uv pip 默认虚拟环境，
   不是打包或依赖锁文件。依赖唯一来源仍为 `requirements-api.txt`，不改用 `uv sync`。
 - `customer_service_test.py`：客服分析 CLI 入口，业务规则已迁到
-  `backend/app/services/customer_service.py`；并非自动化测试。
+  `backend/app/services/inference/customer_service.py`；并非自动化测试。
 - `run-api` / `run-laya`：启动脚本，`run-api` 以 `PYTHONPATH=backend` 启动 `app.main:app`；
   `requirements-api.txt` 声明 API、鉴权与数据库驱动依赖。
 - `backend/app/manage.py`：显式迁移、首个管理员与recover-calls CLI；恢复默认只读，--apply仅恢复可信成功回执的单调用，不接受密码命令行参数，不自动提升已有普通用户权限。

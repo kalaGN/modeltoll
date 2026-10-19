@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 
 from app.core import config, security
+from app.core.time import utc_now
 from app.core.validation import normalize_email, valid_email_shape
 from app.db import session
 from app.repositories import accounts as repository
@@ -54,10 +55,6 @@ class User:
     @property
     def public(self) -> dict[str, Any]:
         return {"id": self.id, "email": self.email, "is_admin": self.is_admin}
-
-
-def utc_now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
 def _throttle_key(normalized_email: str, source: str) -> str:

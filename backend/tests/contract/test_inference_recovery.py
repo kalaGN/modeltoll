@@ -7,7 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 from unittest.mock import patch
 from app.db import session
-from app.services import inference, inference_recovery, billing
+from app.services.inference import lifecycle as inference, recovery as inference_recovery
+from app.services.metering import billing
 from tests.support.inference import Cursor
 
 

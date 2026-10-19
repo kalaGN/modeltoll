@@ -13,8 +13,10 @@ from app.core import config
 from app.db import migrations, session
 from app.db.engine import get_engine
 from app.models import Base, User, ApiCall, UsageCharge, InferenceSuccessReceipt
-from app.services import (accounts, api_keys, admin_management, admin_overview, bootstrap,
-                          inference, inference_recovery, request_limits, statistics)
+from app.services.access import accounts, api_keys, admin_management, bootstrap
+from app.services.platform import admin_overview
+from app.services.inference import lifecycle as inference, recovery as inference_recovery, request_limits
+from app.services.metering import statistics
 from tests.support.mysql_sandbox import mysql_sandbox
 
 

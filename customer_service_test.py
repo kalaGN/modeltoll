@@ -11,7 +11,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_DIR / "backend"))
 
-from app.services import customer_service  # noqa: E402  (需先加入 backend 到导入路径)
+from app.services.inference import customer_service  # noqa: E402  (需先加入 backend 到导入路径)
 
 
 def parse_args() -> argparse.Namespace:

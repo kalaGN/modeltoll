@@ -12,7 +12,7 @@ from app.api.errors import error_content
 from app.api.responses import success
 from app.core import config, security
 from app.schemas.auth import CredentialsRequest
-from app.services import accounts
+from app.services.access import accounts
 
 logger = logging.getLogger("laya.api.auth")
 router = APIRouter(prefix="/v1/auth", tags=["auth"])

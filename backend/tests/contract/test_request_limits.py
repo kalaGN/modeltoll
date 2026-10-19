@@ -8,7 +8,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from app.core import config
-from app.services import request_limits
+from app.services.inference import request_limits
 
 
 class StartupLimitsTests(unittest.IsolatedAsyncioTestCase):

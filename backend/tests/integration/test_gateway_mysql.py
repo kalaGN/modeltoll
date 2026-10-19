@@ -12,7 +12,8 @@ from app.db import session
 from app.db.engine import get_engine
 from app.schemas.gateway import ConnectionRequest
 from app.integrations import openai_client
-from app.services import api_keys, gateway, inference
+from app.services.access import api_keys
+from app.services.inference import gateway, lifecycle as inference
 
 
 @unittest.skipUnless(os.environ.get('LAYA_TEST_MYSQL') == '1', '设置 LAYA_TEST_MYSQL=1 才连接真实数据库')

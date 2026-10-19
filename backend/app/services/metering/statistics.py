@@ -15,8 +15,8 @@ from app.core import config, security
 from app.core.time import iso_utc
 from app.db import session
 from app.repositories import statistics as repository
-from app.services import billing
-from app.services.accounts import utc_now
+from app.services.metering import billing
+from app.core.time import utc_now
 
 
 class StatsError(Exception):

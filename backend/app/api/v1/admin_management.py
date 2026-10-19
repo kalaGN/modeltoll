@@ -9,7 +9,7 @@ from app.api import dependencies
 from app.api.errors import http_error
 from app.api.responses import success
 from app.schemas.admin_management import ReasonRequest, UserStatusRequest
-from app.services import accounts, admin_management as management
+from app.services.access import accounts, admin_management as management
 
 router = APIRouter(prefix='/v1/admin', tags=['admin-management'])
 

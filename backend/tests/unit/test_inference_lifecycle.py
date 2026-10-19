@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 
 from app.db import session
-from app.services import billing, inference
+from app.services.metering import billing
+from app.services.inference import lifecycle as inference
 
 
 from tests.support.inference import Cursor

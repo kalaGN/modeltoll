@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas.gateway import ConnectionRequest
-from app.services import api_keys, customer_service, gateway, inference
+from app.services.access import api_keys
+from app.services.inference import customer_service, gateway, lifecycle as inference
 
 
 CHAT = {'model': 'fixture-model', 'messages': [{'role': 'user', 'content': '合成输入'}]}
@@ -51,7 +52,7 @@ class RequestLimitsHttpTests(unittest.TestCase):
 
     def limits(self, rpm=0, max_inflight=0):
         from app.core import config
-        from app.services import request_limits
+        from app.services.inference import request_limits
         self.stack.enter_context(patch.object(config, 'request_limits_config',
                                              return_value=config.RequestLimits(rpm, max_inflight)))
         self.counts = {}
@@ -68,7 +69,7 @@ class RequestLimitsHttpTests(unittest.TestCase):
         return request_limits
 
     def test_each_endpoint_enters_shared_admission_before_accounting(self):
-        from app.services import request_limits
+        from app.services.inference import request_limits
         admitted = []
 
         @contextmanager

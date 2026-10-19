@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.core import config, security
 from app.main import app
-from app.services import accounts, admin_management, api_keys, statistics
+from app.services.access import accounts, admin_management, api_keys
+from app.services.metering import statistics
 
 USER = accounts.User('fixture-user', 'fixture@example.invalid')
 

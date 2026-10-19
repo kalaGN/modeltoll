@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.gateway import ChatRequest, ConnectionRequest
 from app.integrations import openai_client
-from app.services import accounts, api_keys, gateway
+from app.services.access import accounts, api_keys
+from app.services.inference import gateway
 
 BODY = {"model": "fixture-model", "messages": [{"role": "user", "content": "你好"}]}
 RESULT = {"id": "chatcmpl-fixture", "object": "chat.completion", "model": "fixture-model",

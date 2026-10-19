@@ -6,7 +6,9 @@ from app.api.errors import error_content, http_error
 from app.api.request_body import read_limited_body
 from app.api.responses import success
 from app.schemas.gateway import ChatRequest, ConnectionRequest
-from app.services import accounts, api_keys, billing, gateway, inference, model_runtime
+from app.services.access import accounts, api_keys
+from app.services.metering import billing
+from app.services.inference import gateway, lifecycle as inference, model_runtime
 
 class BoundedJsonRoute(APIRoute):
     """JSON 解析前限制字节数，包括不带 Content-Length 的分块请求。"""

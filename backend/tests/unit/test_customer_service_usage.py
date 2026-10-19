@@ -5,7 +5,7 @@ from types import ModuleType
 import unittest
 from unittest.mock import Mock, patch
 
-from app.services import customer_service
+from app.services.inference import customer_service
 
 
 class CustomerServiceUsageTests(unittest.TestCase):

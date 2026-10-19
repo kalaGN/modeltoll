@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core import config
-from app.services import accounts
+from app.services.access import accounts
 
 
 class ApiOnlyTests(unittest.TestCase):

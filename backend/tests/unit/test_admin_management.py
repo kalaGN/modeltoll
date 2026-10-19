@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1 import admin_management as routes
 from app.db import migrations, session
-from app.services import accounts, admin_management as management
+from app.services.access import accounts, admin_management as management
 
 ACTOR = 'ffffffff-ffff-4fff-afff-ffffffffffff'
 TARGET = '11111111-1111-4111-a111-111111111111'

@@ -8,7 +8,9 @@ from app.api import dependencies
 from app.api.errors import http_error
 from app.api.responses import success, utc_range
 from app.schemas.statistics import StatsQuery
-from app.services import accounts, model_runtime, statistics
+from app.services.access import accounts
+from app.services.inference import model_runtime
+from app.services.metering import statistics
 
 router = APIRouter(tags=["statistics"])
 

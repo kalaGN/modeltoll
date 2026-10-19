@@ -18,6 +18,22 @@ def imports(path):
 
 
 class ArchitectureTests(unittest.TestCase):
+    def test_service_domains_have_no_legacy_root_implementations(self):
+        services = APP / 'services'
+        self.assertEqual({p.name for p in services.glob('*.py')}, {'__init__.py'})
+        expected = {
+            'access': {'accounts', 'api_keys', 'admin_management', 'bootstrap'},
+            'inference': {'lifecycle', 'recovery', 'model_runtime', 'customer_service',
+                          'gateway', 'request_limits', 'idempotency'},
+            'metering': {'billing', 'statistics'},
+            'platform': {'branding', 'admin_overview'},
+        }
+        for domain, modules in expected.items():
+            self.assertEqual({p.stem for p in (services / domain).glob('*.py')}, modules | {'__init__'})
+            tree = ast.parse((services / domain / '__init__.py').read_text())
+            self.assertFalse(any(isinstance(node, (ast.Import, ast.ImportFrom, ast.Call))
+                                 for node in ast.walk(tree)))
+
     def assert_no_imports(self, folder, prefixes):
         for path in (APP / folder).rglob('*.py'):
             with self.subTest(path=str(path.relative_to(APP))):
@@ -37,7 +53,7 @@ class ArchitectureTests(unittest.TestCase):
     def test_upstream_adapter_is_separate_from_business_and_database(self):
         self.assertTrue((APP / 'integrations/openai_client.py').is_file())
         self.assert_no_imports('integrations', ('app.services', 'app.db', 'app.api', 'app.main'))
-        self.assertNotIn('httpx', set(imports(APP / 'services/gateway.py')))
+        self.assertNotIn('httpx', set(imports(APP / 'services/inference/gateway.py')))
 
     def test_migration_executor_is_not_named_models(self):
         self.assertTrue((APP / 'db/migrations.py').is_file())
@@ -45,7 +61,7 @@ class ArchitectureTests(unittest.TestCase):
 
     def test_services_use_repositories_not_models_or_sql(self):
         self.assert_no_imports('services', ('app.models', 'app.db.connection', 'sqlalchemy.orm', 'pymysql'))
-        for path in (APP / 'services').glob('*.py'):
+        for path in (APP / 'services').rglob('*.py'):
             tree = ast.parse(path.read_text())
             with self.subTest(path=path.name):
                 direct_calls = [node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call)
@@ -81,16 +97,16 @@ class ArchitectureTests(unittest.TestCase):
                              for n in ast.walk(tree)))
 
     def test_recovery_does_not_call_private_inference_functions(self):
-        tree = ast.parse((APP / 'services/inference_recovery.py').read_text())
+        tree = ast.parse((APP / 'services/inference/recovery.py').read_text())
         private = [node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
                    and isinstance(node.value, ast.Name) and node.value.id == 'inference'
                    and node.attr.startswith('_')]
         self.assertEqual(private, [])
 
     def test_branding_and_admin_overview_have_separate_owners(self):
-        branding = ast.parse((APP / 'services/branding.py').read_text())
+        branding = ast.parse((APP / 'services/platform/branding.py').read_text())
         self.assertNotIn('overview', [n.name for n in branding.body if isinstance(n, ast.FunctionDef)])
-        self.assertTrue((APP / 'services/admin_overview.py').is_file())
+        self.assertTrue((APP / 'services/platform/admin_overview.py').is_file())
         from app.api.v1 import admin, platform
         self.assertTrue(all(route.path.startswith('/v1/admin/') for route in admin.router.routes))
         self.assertTrue(all(route.path.startswith('/v1/platform/') for route in platform.router.routes))

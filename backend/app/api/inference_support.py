@@ -7,7 +7,8 @@ from typing import Any
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
-from app.services import api_keys, idempotency, inference
+from app.services.access import api_keys
+from app.services.inference import idempotency, lifecycle as inference
 
 logger = logging.getLogger("laya.api.inference")
 

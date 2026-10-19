@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
-from app.services import accounts, branding
+from app.services.access import accounts
+from app.services.platform import branding
 
 USER = accounts.User('00000000-0000-4000-8000-000000000003', 'fixture@example.invalid')
 ADMIN = accounts.User(USER.id, USER.email, True)

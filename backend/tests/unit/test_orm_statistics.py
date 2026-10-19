@@ -8,7 +8,8 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.sql.sqltypes import Integer
 
 from app.repositories import statistics as repository
-from app.services import admin_overview, statistics
+from app.services.platform import admin_overview
+from app.services.metering import statistics
 
 
 class StatisticsRepositoryTests(unittest.TestCase):

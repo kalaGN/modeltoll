@@ -10,7 +10,8 @@ import warnings
 
 from app.core import config
 from app.db import migrations
-from app.services import bootstrap, inference_recovery
+from app.services.access import bootstrap
+from app.services.inference import recovery as inference_recovery
 
 
 class _SafeArgumentParser(argparse.ArgumentParser):

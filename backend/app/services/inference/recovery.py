@@ -3,7 +3,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from app.db import session
 from app.repositories import calls as repository, billing as billing_repository
-from app.services import billing, inference
+from app.services.metering import billing
+from app.services.inference import lifecycle as inference
 
 
 def _rule(row: dict[str, Any]) -> billing.PricingRule:

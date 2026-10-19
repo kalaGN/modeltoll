@@ -7,11 +7,7 @@ from dataclasses import dataclass
 
 from app.core import config, security, validation
 from app.db import session
-
-# 按当前数据库隔离，摘要后总长度为 55，符合 MySQL 命名锁 64 字符上限。
-_LOCK_NAME_SQL = "CONCAT('laya:init-admin:', LEFT(SHA2(DATABASE(), 256), 40))"
-_LOCK_TIMEOUT_SECONDS = 10
-
+from app.repositories import accounts as repository
 
 class BootstrapError(Exception):
     """对运维可展示的固定错误，不包含连接信息、密码或底层异常。"""
@@ -33,61 +29,50 @@ def init_admin(email: str, password: str) -> BootstrapResult:
     if not isinstance(password, str) or not config.PASSWORD_MIN <= len(password) <= config.PASSWORD_MAX:
         raise BootstrapError(f"密码长度须为 {config.PASSWORD_MIN}–{config.PASSWORD_MAX} 个字符")
 
-    conn = session._new_connection(autocommit=False)
-    try:
-        with conn.cursor() as cur:
-            acquired = False
-            committed = False
-            try:
-                cur.execute(f"SELECT GET_LOCK({_LOCK_NAME_SQL}, %s) AS acquired", (_LOCK_TIMEOUT_SECONDS,))
-                row = cur.fetchone()
-                if not row or row["acquired"] != 1:
-                    raise BootstrapError("管理员初始化锁不可用，请稍后重试")
-                acquired = True
-                conn.begin()
+    # Hashing is deliberately outside database transactions and the named lock.
+    # The locked recheck below remains authoritative if the account changes here.
+    with session.read_session() as db:
+        existing = repository.bootstrap_user(db, normalized)
+    password_hash = security.hash_password(password) if existing is None else None
+
+    with session.pinned_session() as db:
+        acquired = False
+        committed = False
+        try:
+            if not repository.bootstrap_lock(db):
+                raise BootstrapError("管理员初始化锁不可用，请稍后重试")
+            acquired = True
+            # GET_LOCK is a SELECT and triggers SQLAlchemy autobegin. End that
+            # transaction, keeping the same physical connection and named lock.
+            db.rollback()
+            with db.begin():
+                user = repository.bootstrap_user(db, normalized, lock=True)
+                if user:
+                    if not user["is_admin"]:
+                        raise BootstrapError("邮箱已属于普通用户，初始化不会自动提升权限")
+                    if user["status"] != "active":
+                        raise BootstrapError("该管理员已停用，初始化不会自动激活")
+                    result = BootstrapResult(user["id"], user["email"], False)
+                else:
+                    if repository.any_admin(db):
+                        raise BootstrapError("平台已有管理员，不能再初始化首个管理员")
+                    if password_hash is None:
+                        # User deletion is not a supported operation. Do not hash
+                        # while holding a transaction if an external writer did it.
+                        raise BootstrapError("账号状态已变化，请重新执行初始化")
+                    user_id = str(uuid.uuid4())
+                    repository.create_admin(db, user_id, normalized, password_hash)
+                    result = BootstrapResult(user_id, normalized, True)
+            committed = True
+        finally:
+            if acquired:
                 try:
-                    cur.execute(
-                        "SELECT id, email, status, is_admin FROM users"
-                        " WHERE email_normalized = %s FOR UPDATE", (normalized,),
-                    )
-                    user = cur.fetchone()
-                    if user:
-                        if not user["is_admin"]:
-                            raise BootstrapError("邮箱已属于普通用户，初始化不会自动提升权限")
-                        if user["status"] != "active":
-                            raise BootstrapError("该管理员已停用，初始化不会自动激活")
-                        result = BootstrapResult(user["id"], user["email"], False)
-                    else:
-                        # 停用管理员也算已初始化，不能通过新邮箱绕过此限制。
-                        cur.execute("SELECT id FROM users WHERE is_admin = 1 LIMIT 1 FOR UPDATE")
-                        if cur.fetchone():
-                            raise BootstrapError("平台已有管理员，不能再初始化首个管理员")
-                        user_id = str(uuid.uuid4())
-                        password_hash = security.hash_password(password)
-                        cur.execute(
-                            "INSERT INTO users (id, email, email_normalized, password_hash, status,"
-                            " is_admin, created_at, updated_at)"
-                            " VALUES (%s, %s, %s, %s, 'active', 1, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))",
-                            (user_id, normalized, normalized, password_hash),
-                        )
-                        result = BootstrapResult(user_id, normalized, True)
-                    conn.commit()
-                    committed = True
-                except BaseException:
-                    conn.rollback()
-                    raise
-            finally:
-                if acquired:
-                    try:
-                        cur.execute(f"SELECT RELEASE_LOCK({_LOCK_NAME_SQL}) AS released")
-                        row = cur.fetchone()
-                        if not row or row["released"] != 1:
-                            raise BootstrapError("初始化锁释放未确认，请重复执行检查结果")
-                    except Exception:
-                        # 关闭连接仍释放连接级命名锁。保留原操作异常；已提交时
-                        # 不返回伪成功，提示重跑确认（幂等且不会改密码）。
-                        if committed:
-                            raise BootstrapError("初始化锁释放未确认，请重复执行检查结果") from None
-            return result
-    finally:
-        conn.close()
+                    if not repository.bootstrap_lock(db, release=True):
+                        raise BootstrapError("初始化锁释放未确认，请重复执行检查结果")
+                except Exception:
+                    # Closing the pinned connection still releases its named lock.
+                    # Preserve original failures; never claim success after a lost
+                    # release acknowledgement following a committed creation.
+                    if committed:
+                        raise BootstrapError("初始化锁释放未确认，请重复执行检查结果") from None
+        return result

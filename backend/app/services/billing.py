@@ -9,6 +9,7 @@ from typing import Any
 
 from app.core import config
 from app.db import session
+from app.repositories import billing as repository
 
 
 class NoPricingRule(Exception):
@@ -41,16 +42,8 @@ class PricingRule:
 
 def current_rule(model: str) -> PricingRule:
     """按模型取 effective_from ≤ 当前 UTC 时间的最新规则并固定其 ID。"""
-    with session.cursor() as cur:
-        cur.execute(
-            "SELECT id, version, model, currency, token_basis, unit_tokens,"
-            " unit_price_yuan, billing_policy_version"
-            " FROM pricing_rules"
-            " WHERE model = %s AND effective_from <= UTC_TIMESTAMP(3)"
-            " ORDER BY effective_from DESC LIMIT 1",
-            (model,),
-        )
-        row = cur.fetchone()
+    with session.read_session() as db:
+        row = repository.current_rule(db, model)
     if row is None:
         raise NoPricingRule()
     return PricingRule(
@@ -74,19 +67,9 @@ def amount_yuan(billable_tokens: int, rule: PricingRule) -> Decimal:
 def insert_charge(cur: Any, call_id: str, rule: PricingRule, billable_tokens: int) -> Decimal:
     """在同一事务内写入唯一费用行；UNIQUE(call_id) 防止重复入账。"""
     amount = amount_yuan(billable_tokens, rule)
-    cur.execute(
-        "INSERT INTO usage_charges (id, call_id, pricing_rule_id, billable_input_tokens,"
-        " unit_tokens, unit_price_yuan, amount_yuan, currency, created_at)"
-        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(3))",
-        (
-            str(uuid.uuid4()),
-            call_id,
-            rule.id,
-            billable_tokens,
-            rule.unit_tokens,
-            rule.unit_price_yuan,
-            amount,
-            rule.currency,
-        ),
-    )
+    repository.insert_charge(cur, dict(
+        id=str(uuid.uuid4()), call_id=call_id, pricing_rule_id=rule.id,
+        billable_input_tokens=billable_tokens, unit_tokens=rule.unit_tokens,
+        unit_price_yuan=rule.unit_price_yuan, amount_yuan=amount, currency=rule.currency,
+    ))
     return amount

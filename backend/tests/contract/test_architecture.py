@@ -43,6 +43,37 @@ class ArchitectureTests(unittest.TestCase):
         self.assertTrue((APP / 'db/migrations.py').is_file())
         self.assertFalse((APP / 'db/models.py').exists())
 
+    def test_services_use_repositories_not_models_or_sql(self):
+        self.assert_no_imports('services', ('app.models', 'app.db.connection', 'sqlalchemy.orm', 'pymysql'))
+        for path in (APP / 'services').glob('*.py'):
+            tree = ast.parse(path.read_text())
+            with self.subTest(path=path.name):
+                direct_calls = [node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call)
+                                and isinstance(node.func, ast.Attribute)
+                                and node.func.attr in {'execute', 'exec_driver_sql', 'query', 'scalar', 'scalars'}]
+                self.assertEqual(direct_calls, [])
+                orm_imports = [name for name in imports(path)
+                               if name.startswith('sqlalchemy') and name not in {'sqlalchemy.exc', 'sqlalchemy.exc.IntegrityError'}]
+                self.assertEqual(orm_imports, [])
+
+    def test_repositories_do_not_own_transactions(self):
+        self.assert_no_imports('repositories', ('app.services', 'app.api', 'app.db'))
+        for path in (APP / 'repositories').glob('*.py'):
+            with self.subTest(path=path.name):
+                tree = ast.parse(path.read_text())
+                self.assertEqual([node.func.attr for node in ast.walk(tree) if isinstance(node, ast.Call)
+                                  and isinstance(node.func, ast.Attribute)
+                                  and node.func.attr in {'commit', 'rollback', 'connect', 'begin'}], [])
+
+    def test_native_connection_and_schema_creation_are_migration_only(self):
+        self.assert_no_imports('api', ('app.models', 'app.repositories', 'app.db'))
+        from app.db import session
+        self.assertFalse(any(hasattr(session, name) for name in ('cursor', 'transaction', '_new_connection')))
+        for path in APP.rglob('*.py'):
+            tree = ast.parse(path.read_text())
+            self.assertFalse(any(isinstance(node, ast.Attribute) and node.attr in {'create_all', 'drop_all'}
+                                 for node in ast.walk(tree)), str(path))
+
     def test_settings_contract_is_in_schemas(self):
         self.assertTrue((APP / 'schemas/platform.py').is_file())
         tree = ast.parse((APP / 'api/v1/admin.py').read_text())

@@ -17,30 +17,13 @@ import uuid
 from tests.support.paths import ROOT
 
 _CLOCKED_DB = textwrap.dedent('''
-    from contextlib import contextmanager
     from datetime import datetime, timedelta
     from unittest.mock import patch
-    from app.db import session
+    from app.db import connection
+    from app.repositories import request_limits as limits_repository
 
-    real_transaction = session.transaction
-    class ClockCursor:
-        def __init__(self, cursor):
-            self.cursor = cursor
-            self.clock_query = False
-        def execute(self, statement, parameters=None):
-            self.clock_query = statement == 'SELECT UTC_TIMESTAMP(6) AS now'
-            if not self.clock_query:
-                return self.cursor.execute(statement, parameters)
-        def fetchone(self):
-            if self.clock_query:
-                return {'now': controlled_now}
-            return self.cursor.fetchone()
-        def __getattr__(self, name):
-            return getattr(self.cursor, name)
-    @contextmanager
-    def clocked_transaction():
-        with real_transaction() as cursor:
-            yield ClockCursor(cursor)
+    def clocked_now(db):
+        return controlled_now
 ''')
 
 _MYSQL_CHECK = textwrap.dedent('''
@@ -57,14 +40,14 @@ _MYSQL_CHECK = textwrap.dedent('''
     migrations.init_db()
     migrations.init_db()
     assert '0009_request_rate_windows.sql' in migrations.MIGRATIONS
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('SELECT UTC_TIMESTAMP(6) AS now')
         controlled_now = cursor.fetchone()['now'].replace(second=10, microsecond=0)
 
     def new_user():
         user_id = str(uuid.uuid4())
         email = user_id + '@example.invalid'
-        with session.cursor() as cursor:
+        with connection.cursor() as cursor:
             cursor.execute('INSERT INTO users (id, email, email_normalized, password_hash, '
                            'created_at, updated_at) VALUES (%s, %s, %s, %s, '
                            'UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))',
@@ -72,7 +55,7 @@ _MYSQL_CHECK = textwrap.dedent('''
         return user_id
 
     def snapshot():
-        with session.cursor() as cursor:
+        with connection.cursor() as cursor:
             cursor.execute('SELECT * FROM api_calls ORDER BY id')
             calls = cursor.fetchall()
             cursor.execute('SELECT * FROM usage_charges ORDER BY id')
@@ -81,7 +64,7 @@ _MYSQL_CHECK = textwrap.dedent('''
     user_id = new_user()
     other_user = new_user()
     key_id = str(uuid.uuid4())
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('INSERT INTO api_keys (id, user_id, name, key_hash, display_prefix, '
                        'last_four, created_at) VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(3))',
                        (key_id, user_id, 'synthetic history',
@@ -122,14 +105,14 @@ _MYSQL_CHECK = textwrap.dedent('''
             assert error.retry_after == 50
             return 'rejected'
 
-    with patch.object(session, 'transaction', clocked_transaction):
+    with patch.object(limits_repository, 'now', clocked_now):
         with ThreadPoolExecutor(max_workers=12) as pool:
             outcomes = list(pool.map(enter, range(12)))
         assert outcomes.count('accepted') == 3
         assert outcomes.count('rejected') == 9
         with request_limits.admit(other_user):
             pass
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('SELECT request_count FROM request_rate_windows WHERE user_id = %s', (user_id,))
         assert cursor.fetchall() == [{'request_count': 3}]
     assert snapshot() == history
@@ -139,7 +122,7 @@ _MYSQL_CHECK = textwrap.dedent('''
     import os, sys
     from app.services import request_limits
     controlled_now = datetime.fromisoformat(sys.argv[2])
-    with patch.object(session, 'transaction', clocked_transaction):
+    with patch.object(limits_repository, 'now', clocked_now):
         try:
             with request_limits.admit(sys.argv[1]):
                 raise AssertionError('restart reset the minute budget')
@@ -152,7 +135,7 @@ _MYSQL_CHECK = textwrap.dedent('''
     restarted = subprocess.run([sys.executable, '-c', restart_code, user_id, controlled_now.isoformat()],
                                capture_output=True, text=True, timeout=30)
     assert restarted.returncode == 0, 'separate-process persistence/window check failed'
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('SELECT request_count FROM request_rate_windows WHERE user_id = %s '
                        'ORDER BY window_start', (user_id,))
         assert cursor.fetchall() == [{'request_count': 3}, {'request_count': 1}]
@@ -175,10 +158,10 @@ _MYSQL_CHECK = textwrap.dedent('''
     assert user_id not in request_limits._inflight
 
     # Deliberate schema fault is confined to this random disposable project.
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('DROP TABLE request_rate_windows')
     os.environ['LAYA_USER_RPM'] = '3'
-    with patch.object(session, 'transaction', clocked_transaction):
+    with patch.object(limits_repository, 'now', clocked_now):
         try:
             with request_limits.admit(user_id):
                 raise AssertionError('storage failure must fail closed')
@@ -186,7 +169,7 @@ _MYSQL_CHECK = textwrap.dedent('''
             assert error.status_code == 503 and error.code == 'rate_limit_unavailable'
     assert user_id not in request_limits._inflight
     migrations.init_db()
-    with patch.object(session, 'transaction', clocked_transaction):
+    with patch.object(limits_repository, 'now', clocked_now):
         with request_limits.admit(user_id):
             pass
     assert snapshot() == history
@@ -196,7 +179,7 @@ _MYSQL_CHECK = textwrap.dedent('''
     inference.mark_running(failed_call)
     inference.keep_usage(failed_call, {'input_tokens': 17, 'output_tokens': 0})
     inference.failed(failed_call, 'inference_error', 500)
-    with session.cursor() as cursor:
+    with connection.cursor() as cursor:
         cursor.execute('SELECT status, input_tokens, output_tokens, billing_status FROM api_calls '
                        'WHERE id = %s', (failed_call.id,))
         assert cursor.fetchone() == {'status': 'failed', 'input_tokens': 17,

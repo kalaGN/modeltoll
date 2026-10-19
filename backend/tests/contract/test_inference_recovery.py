@@ -29,20 +29,3 @@ class ReceiptCursor(Cursor):
         self.pricing = dict(id='rule', version='v1', model='model', currency='CNY',
                             token_basis='input', unit_tokens=1000000,
                             unit_price_yuan=Decimal('1'), billing_policy_version='succeeded_only_v1')
-
-    def execute(self, sql, args=()):
-        if sql.startswith('SELECT') and 'FROM inference_success_receipts' in sql:
-            self.result = deepcopy(self.receipt)
-        elif sql.startswith('SELECT') and 'FROM pricing_rules' in sql:
-            self.result = deepcopy(self.pricing)
-        elif sql.startswith('INSERT INTO inference_success_receipts'):
-            if self.fail_receipt:
-                raise RuntimeError('synthetic receipt fault')
-            self.writes.append(sql)
-            self.receipt = dict(input_tokens=args[1], output_tokens=args[2], truncated=args[3],
-                                state_tokens_dropped=args[4], completed_at=datetime(2026, 10, 10),
-                                duration_ms=args[5])
-        else:
-            super().execute(sql, args)
-            if sql.startswith('UPDATE') and "status = 'succeeded'" in sql:
-                self.row.update(duration_ms=args[1], completed_at=args[7] if len(args) == 9 else None)

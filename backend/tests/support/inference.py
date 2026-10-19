@@ -1,5 +1,9 @@
-"""Shared synthetic inference cursor; no database connections."""
+"""Synthetic SQLAlchemy result store; not evidence of real MySQL locks."""
 from copy import deepcopy
+from datetime import datetime
+from sqlalchemy.dialects import mysql
+from sqlalchemy.sql.dml import Insert, Update
+from sqlalchemy.sql.selectable import Select
 
 
 class Cursor:
@@ -7,37 +11,48 @@ class Cursor:
         self.row = dict(status=status, http_status=None, error_code=None,
                         input_tokens=None, output_tokens=None, truncated=None,
                         state_tokens_dropped=None, billing_status='pending',
-                        billing_reason=None, pricing_rule_id='rule')
+                        billing_reason=None, pricing_rule_id='rule', completed_at=None, duration_ms=None)
         self.charge = None
+        self.receipt = None
         self.writes = []
         self.rowcount = 1
         self.result = None
 
-    def execute(self, sql, args=()):
-        if sql.startswith('SELECT'):
-            if 'FROM inference_success_receipts' in sql:
-                self.result = None
-            else:
-                self.result = deepcopy(self.charge if 'FROM usage_charges' in sql else self.row)
-            return
-        self.writes.append(sql)
-        if "status = 'running'" in sql:
-            self.rowcount = int(self.row is not None and self.row['status'] == 'accepted')
-            if self.rowcount:
-                self.row['status'] = 'running'
-        elif "status = 'succeeded'" in sql:
-            self.row.update(status='succeeded', http_status=args[0], input_tokens=args[2],
-                            output_tokens=args[3], truncated=args[4], state_tokens_dropped=args[5],
-                            billing_status='charged', billing_reason=args[6])
-        elif "status = 'failed'" in sql:
-            self.row.update(status='failed', http_status=args[0], error_code=args[1],
-                            billing_status=args[3], billing_reason=args[4])
-        elif "status = 'interrupted'" in sql:
-            self.row.update(status='interrupted', http_status=args[0], error_code=args[1],
-                            billing_status='not_billable', billing_reason=args[3])
-        elif 'SET input_tokens' in sql:
-            self.row.update(input_tokens=args[0], output_tokens=args[1],
-                            truncated=args[2], state_tokens_dropped=args[3])
+    def execute(self, statement, args=()):
+        compiled = statement.compile(dialect=mysql.dialect())
+        sql, values = str(compiled), compiled.params
+        if isinstance(statement, Select):
+            table = statement.get_final_froms()[0].name
+            self.result = deepcopy({'inference_success_receipts': self.receipt,
+                                    'usage_charges': self.charge,
+                                    'pricing_rules': getattr(self, 'pricing', None),
+                                    'api_calls': self.row}[table])
+        elif isinstance(statement, Insert) and statement.table.name == 'inference_success_receipts':
+            if getattr(self, 'fail_receipt', False):
+                raise RuntimeError('synthetic receipt fault')
+            self.writes.append(sql)
+            self.receipt = {key: values[key] for key in ('input_tokens', 'output_tokens',
+                'truncated', 'state_tokens_dropped', 'duration_ms')}
+            self.receipt['completed_at'] = datetime(2026, 10, 10)
+        elif isinstance(statement, Update):
+            self.writes.append(sql)
+            updates = {}
+            for column, value in statement._values.items():
+                name = getattr(column, 'key', column)
+                updates[name] = getattr(value, 'value', datetime(2026, 10, 10))
+            if updates.get('status') == 'running':
+                self.rowcount = int(self.row is not None and self.row['status'] == 'accepted')
+            if self.row is not None and self.rowcount:
+                self.row.update(updates)
+        else:
+            raise AssertionError(sql)
+        return self
+
+    def mappings(self):
+        return self
+
+    def first(self):
+        return self.result
 
     def fetchone(self):
         return self.result

@@ -50,11 +50,12 @@ class LogoTests(unittest.TestCase):
 class AccountRoleTests(unittest.TestCase):
     def test_role_reads_current_database_row(self):
         class Cursor:
-            def execute(self, *args): pass
-            def fetchone(self): return {'id': USER.id, 'email': USER.email, 'is_admin': 1}
+            def execute(self, *args): return self
+            def mappings(self): return self
+            def first(self): return {'id': USER.id, 'email': USER.email, 'is_admin': 1}
         @contextmanager
         def cursor(): yield Cursor()
-        with patch.object(accounts.session, 'cursor', cursor):
+        with patch.object(accounts.session, 'read_session', cursor):
             self.assertIs(accounts.current_user('fixture-token').is_admin, True)
 
     def test_registration_does_not_accept_admin_field(self):

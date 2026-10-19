@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import httpx
+from sqlalchemy.dialects import mysql
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -111,25 +112,25 @@ class GatewayTests(unittest.TestCase):
 
     def test_save_initial_price_and_connection_in_one_transaction(self):
         cur = MagicMock()
-        cur.fetchone.side_effect = [{'id': 1}, None]
+        cur.execute.return_value.mappings.return_value.first.side_effect = [{'id': 1}, None]
         @contextmanager
         def transaction():
             yield cur
-        with patch.object(gateway.session, 'transaction', transaction), patch.object(openai_client, 'upstream_key', return_value=''):
+        with patch.object(gateway.session, 'unit_of_work', transaction), patch.object(openai_client, 'upstream_key', return_value=''):
             result = gateway.save_connection(CONNECTION)
         self.assertEqual(result['connection'], CONNECTION.model_dump())
-        statements = [args[0] for args, kwargs in cur.execute.call_args_list]
+        statements = [str(args[0].compile(dialect=mysql.dialect())) for args, kwargs in cur.execute.call_args_list]
         self.assertTrue(any('INSERT INTO pricing_rules' in sql for sql in statements))
         self.assertFalse(any('UPDATE pricing_rules' in sql for sql in statements))
         self.assertIn('UPDATE model_connection', statements[-1])
 
     def test_existing_price_is_not_replaced(self):
         cur = MagicMock()
-        cur.fetchone.side_effect = [{'id': 1}, {'id': 'existing-price'}]
+        cur.execute.return_value.mappings.return_value.first.side_effect = [{'id': 1}, {'id': 'existing-price'}]
         @contextmanager
         def transaction():
             yield cur
-        with patch.object(gateway.session, 'transaction', transaction), patch.object(openai_client, 'upstream_key', return_value=''):
+        with patch.object(gateway.session, 'unit_of_work', transaction), patch.object(openai_client, 'upstream_key', return_value=''):
             gateway.save_connection(CONNECTION)
-        statements = [args[0] for args, kwargs in cur.execute.call_args_list]
+        statements = [str(args[0].compile(dialect=mysql.dialect())) for args, kwargs in cur.execute.call_args_list]
         self.assertFalse(any('INSERT INTO pricing_rules' in sql for sql in statements))

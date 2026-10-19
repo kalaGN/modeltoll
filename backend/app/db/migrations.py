@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core import config
-from app.db import session
+from app.db import connection
 
 # 按依赖顺序：账号/会话 → Key → 价格与调用/费用。回滚脚本同名 *_rollback.sql。
 MIGRATIONS = ("0001_auth.sql", "0002_api_keys.sql", "0003_billing.sql", "0004_api_key_deletion.sql", "0005_user_admin.sql", "0006_platform_settings.sql", "0007_model_gateway.sql", "0008_admin_audit.sql", "0009_request_rate_windows.sql", "0010_success_receipts.sql", "0011_request_idempotency.sql")
@@ -23,7 +23,7 @@ def statements(sql_file: Path) -> list[str]:
 
 def init_db() -> None:
     # MySQL 的 DDL 隐式提交；迁移通过 IF NOT EXISTS 或元数据检查允许重复执行。
-    with session.cursor() as cur:
+    with connection.cursor() as cur:
         for name in MIGRATIONS:
             for statement in statements(config.MIGRATIONS_DIR / name):
                 cur.execute(statement)

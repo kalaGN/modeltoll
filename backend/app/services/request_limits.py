@@ -9,6 +9,7 @@ import threading
 
 from app.core import config
 from app.db import session
+from app.repositories import request_limits as repository
 
 logger = logging.getLogger(__name__)
 _inflight: dict[str, int] = {}
@@ -29,32 +30,24 @@ class _WindowChanged(Exception):
 
 
 def _reserve_rpm(user_id: str, rpm: int) -> None:
-    # Autocommit releases cleanup range/gap locks before inserting a current window.
+    # Commit releases cleanup range/gap locks before inserting a current window.
     # Keeping DELETE in the quota transaction can deadlock concurrent first requests.
-    with session.cursor() as cur:
-        cur.execute('DELETE FROM request_rate_windows '
-                    'WHERE window_start < UTC_TIMESTAMP(6) - INTERVAL 24 HOUR LIMIT 1000')
+    with session.unit_of_work() as db:
+        repository.cleanup(db)
     for _ in range(3):
         try:
-            with session.transaction() as cur:
-                cur.execute('SELECT UTC_TIMESTAMP(6) AS now')
-                now = cur.fetchone()['now']
+            with session.unit_of_work() as db:
+                now = repository.now(db)
                 window = now.replace(second=0, microsecond=0)
-                cur.execute('INSERT INTO request_rate_windows (user_id, window_start, request_count) '
-                            'VALUES (%s, %s, 0) ON DUPLICATE KEY UPDATE request_count = request_count',
-                            (user_id, window))
-                cur.execute('SELECT request_count FROM request_rate_windows '
-                            'WHERE user_id = %s AND window_start = %s FOR UPDATE', (user_id, window))
-                count = cur.fetchone()['request_count']
-                cur.execute('SELECT UTC_TIMESTAMP(6) AS now')
-                now = cur.fetchone()['now']
+                repository.ensure_window(db, user_id, window)
+                count = repository.lock_count(db, user_id, window)
+                now = repository.now(db)
                 if now.replace(second=0, microsecond=0) != window:
                     raise _WindowChanged()
                 if count >= rpm:
                     retry = max(1, math.ceil((window + timedelta(minutes=1) - now).total_seconds()))
                     raise RateLimitError(429, 'rate_limit_exceeded', '请求次数超过当前分钟限额', retry)
-                cur.execute('UPDATE request_rate_windows SET request_count = request_count + 1 '
-                            'WHERE user_id = %s AND window_start = %s', (user_id, window))
+                repository.increment(db, user_id, window)
             return
         except _WindowChanged:
             continue

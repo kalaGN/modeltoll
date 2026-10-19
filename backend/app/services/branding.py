@@ -10,6 +10,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app.core.time import iso_utc
 from app.db import session
+from app.repositories import settings
 
 MAX_LOGO_BYTES = 2 * 1024 * 1024
 MAX_PIXELS = 4096 * 4096
@@ -67,33 +68,21 @@ def _public(row: dict) -> dict:
 
 
 def branding() -> dict:
-    with session.cursor() as cur:
-        cur.execute("SELECT name, description, logo_blob IS NOT NULL AS has_logo, updated_at"
-                    " FROM platform_settings WHERE id = 1")
-        row = cur.fetchone()
+    with session.read_session() as db:
+        row = settings.branding(db)
     return _public(row) if row else dict(DEFAULT_BRANDING)
 
 
 def logo() -> bytes | None:
-    with session.cursor() as cur:
-        cur.execute("SELECT logo_blob FROM platform_settings WHERE id = 1")
-        row = cur.fetchone()
-    return row["logo_blob"] if row else None
+    with session.read_session() as db:
+        return settings.logo(db)
 
 
 def save_settings(name: str, description: str, logo_data_url: str | None) -> dict:
     image = validate_logo(logo_data_url) if logo_data_url else None
-    with session.transaction() as cur:
-        if logo_data_url is None:
-            cur.execute("UPDATE platform_settings SET name = %s, description = %s,"
-                        " updated_at = UTC_TIMESTAMP(3) WHERE id = 1", (name, description))
-        else:
-            cur.execute("UPDATE platform_settings SET name = %s, description = %s,"
-                        " logo_blob = %s, logo_mime = %s, updated_at = UTC_TIMESTAMP(3) WHERE id = 1",
-                        (name, description, image, "image/png" if image else None))
-        cur.execute("SELECT name, description, logo_blob IS NOT NULL AS has_logo, updated_at"
-                    " FROM platform_settings WHERE id = 1")
-        row = cur.fetchone()
+    with session.unit_of_work() as db:
+        settings.save_branding(db, name, description, image, keep_logo=logo_data_url is None)
+        row = settings.branding(db)
         if row is None:
             raise RuntimeError("平台配置记录缺失，请执行迁移")
         return _public(row)

@@ -188,8 +188,8 @@ class DeploymentRuntimeTests(unittest.TestCase):
                     # Test-only DB trigger forces the audit INSERT to fail. The
                     # generated Compose database is disposable and isolated.
                     run('exec', '-T', 'app', 'python', '-c',
-                        "from app.db import session\nwith session.cursor() as cur:\n"
-                        " cur.execute(\"CREATE TRIGGER smoke_audit_failure BEFORE INSERT ON admin_audit_events "
+                        "from app.db.engine import get_engine\nwith get_engine().begin() as connection:\n"
+                        " connection.exec_driver_sql(\"CREATE TRIGGER smoke_audit_failure BEFORE INSERT ON admin_audit_events "
                         "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic audit failure'\")")
                     try:
                         failed_status = admin.patch(f'/v1/admin/users/{user_id}/status', headers=admin_headers,
@@ -207,8 +207,8 @@ class DeploymentRuntimeTests(unittest.TestCase):
                         self.assertEqual(client.get('/v1/usage/summary').json()['totals'], totals)
                     finally:
                         run('exec', '-T', 'app', 'python', '-c',
-                            "from app.db import session\nwith session.cursor() as cur:\n"
-                            " cur.execute('DROP TRIGGER smoke_audit_failure')")
+                            "from app.db.engine import get_engine\nwith get_engine().begin() as connection:\n"
+                            " connection.exec_driver_sql('DROP TRIGGER smoke_audit_failure')")
         finally:
             # 唯一随机项目名，只包含本测试创建的数据；绝不使用真实部署 project。
             run('down', '--volumes', '--remove-orphans', timeout=90)

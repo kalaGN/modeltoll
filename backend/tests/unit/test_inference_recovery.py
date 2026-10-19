@@ -22,22 +22,6 @@ class ReceiptCursor(Cursor):
                             token_basis='input', unit_tokens=1000000,
                             unit_price_yuan=Decimal('1'), billing_policy_version='succeeded_only_v1')
 
-    def execute(self, sql, args=()):
-        if sql.startswith('SELECT') and 'FROM inference_success_receipts' in sql:
-            self.result = deepcopy(self.receipt)
-        elif sql.startswith('SELECT') and 'FROM pricing_rules' in sql:
-            self.result = deepcopy(self.pricing)
-        elif sql.startswith('INSERT INTO inference_success_receipts'):
-            if self.fail_receipt:
-                raise RuntimeError('synthetic receipt fault')
-            self.writes.append(sql)
-            self.receipt = dict(input_tokens=args[1], output_tokens=args[2], truncated=args[3],
-                                state_tokens_dropped=args[4], completed_at=datetime(2026, 10, 10),
-                                duration_ms=args[5])
-        else:
-            super().execute(sql, args)
-            if sql.startswith('UPDATE') and "status = 'succeeded'" in sql:
-                self.row.update(duration_ms=args[1], completed_at=args[7] if len(args) == 9 else None)
 
 
 class SuccessReceiptTests(unittest.TestCase):
@@ -58,8 +42,8 @@ class SuccessReceiptTests(unittest.TestCase):
                 raise
 
         self.addCleanup(patch.stopall)
-        patch.object(session, 'transaction', transaction).start()
-        patch.object(session, 'cursor', transaction).start()
+        patch.object(session, 'unit_of_work', transaction).start()
+        patch.object(session, 'read_session', transaction).start()
 
         def insert(cur, call_id, rule, tokens):
             if cur.charge is not None:
@@ -194,7 +178,7 @@ class InspectionTests(unittest.TestCase):
         from unittest.mock import Mock
         import json
         cur = Mock()
-        cur.fetchall.return_value = [dict(
+        cur.execute.return_value.mappings.return_value.all.return_value = [dict(
             id='call', status='running', billing_status='pending', receipt_id=None,
             started_at=datetime(2026, 10, 10, 1, 2, 3), completed_at=None,
             input_tokens=None, amount_yuan=None)]
@@ -203,14 +187,16 @@ class InspectionTests(unittest.TestCase):
         def cursor():
             yield cur
 
-        with patch.object(session, 'cursor', cursor):
+        with patch.object(session, 'read_session', cursor):
             result = inference_recovery.inspect_calls(offset=100)
         self.assertEqual(result[0]['started_at'], '2026-10-10T01:02:03')
         self.assertEqual(result[0]['classification'], 'needs_review')
         self.assertIsNone(result[0]['completed_at'])
         self.assertIn('needs_review', json.dumps(result))
-        self.assertEqual(cur.execute.call_args.args[1], (100, 100))
-        self.assertTrue(cur.execute.call_args.args[0].startswith('SELECT'))
+        statement = cur.execute.call_args.args[0]
+        self.assertEqual(statement._limit_clause.value, 100)
+        self.assertEqual(statement._offset_clause.value, 100)
+        self.assertTrue(statement.is_select)
 
     def test_inspection_limits_and_offset_are_strict(self):
         for limit in [True, 0, 101, '1']:

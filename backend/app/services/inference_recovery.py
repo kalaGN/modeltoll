@@ -2,6 +2,7 @@
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from app.db import session
+from app.repositories import calls as repository, billing as billing_repository
 from app.services import billing, inference
 
 
@@ -27,16 +28,11 @@ def _receipt_values(receipt: dict[str, Any]) -> tuple:
 
 def recover(call_id: str) -> Decimal:
     """Settle one known success using its original price and receipt completion time."""
-    with session.transaction() as cur:
-        cur.execute('SELECT id, user_id, api_key_id, endpoint, model, pricing_rule_id'
-                    ' FROM api_calls WHERE id = %s FOR UPDATE', (call_id,))
-        row = cur.fetchone()
+    with session.unit_of_work() as cur:
+        row = repository.lock_call(cur, call_id)
         if row is None:
             raise inference.CallStateConflict(call_id)
-        cur.execute('SELECT id, version, model, currency, token_basis, unit_tokens,'
-                    ' unit_price_yuan, billing_policy_version FROM pricing_rules WHERE id = %s',
-                    (row['pricing_rule_id'],))
-        pricing = cur.fetchone()
+        pricing = billing_repository.rule_by_id(cur, row['pricing_rule_id'])
         if pricing is None or pricing['billing_policy_version'] != 'succeeded_only_v1':
             raise inference.CallStateConflict(call_id)
         call = inference.Call(row['id'], row['user_id'], row['api_key_id'], row['endpoint'],
@@ -60,27 +56,8 @@ def inspect_calls(limit: int = 100, call_id: str | None = None,
         raise ValueError('limit must be between 1 and 100')
     if type(offset) is not int or not 0 <= offset <= 1000000:
         raise ValueError('offset must be between 0 and 1000000')
-    with session.cursor() as cur:
-        cur.execute(
-            'SELECT c.id, c.status, c.http_status, c.error_code, c.billing_status,'
-            ' c.billing_reason, c.input_tokens, c.output_tokens, c.truncated,'
-            ' c.state_tokens_dropped, c.completed_at, c.duration_ms, c.started_at,'
-            ' c.model, c.pricing_rule_id, r.call_id AS receipt_id,'
-            ' r.input_tokens AS r_input, r.output_tokens AS r_output, r.truncated AS r_truncated,'
-            ' r.state_tokens_dropped AS r_dropped, r.completed_at AS r_completed,'
-            ' r.duration_ms AS r_duration, h.call_id AS charge_id, h.amount_yuan,'
-            ' h.pricing_rule_id AS h_rule, h.billable_input_tokens AS h_input,'
-            ' h.unit_tokens AS h_unit, h.unit_price_yuan AS h_price, h.currency AS h_currency,'
-            ' p.unit_tokens AS p_unit, p.unit_price_yuan AS p_price, p.currency AS p_currency,'
-            ' p.billing_policy_version AS p_policy, p.model AS p_model'
-            ' FROM api_calls c LEFT JOIN inference_success_receipts r ON r.call_id = c.id'
-            ' LEFT JOIN usage_charges h ON h.call_id = c.id'
-            ' LEFT JOIN pricing_rules p ON p.id = c.pricing_rule_id'
-            + (' WHERE c.id = %s' if call_id is not None else '')
-            + ' ORDER BY c.started_at, c.id LIMIT %s OFFSET %s',
-            (call_id, limit, offset) if call_id is not None else (limit, offset),
-        )
-        rows = cur.fetchall()
+    with session.read_session() as cur:
+        rows = repository.inspect_calls(cur, limit, call_id, offset)
     return [{
         'call_id': row['id'], 'status': row['status'], 'billing_status': row['billing_status'],
         'classification': _classify(row), 'has_success_receipt': row['receipt_id'] is not None,

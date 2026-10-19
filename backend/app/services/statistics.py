@@ -14,7 +14,8 @@ from typing import Any
 from app.core import config, security
 from app.core.time import iso_utc
 from app.db import session
-from app.services import api_keys, billing
+from app.repositories import statistics as repository
+from app.services import billing
 from app.services.accounts import utc_now
 
 
@@ -80,18 +81,6 @@ def page_size(limit: int) -> int:
     return max(1, min(limit or config.PAGE_SIZE_DEFAULT, config.PAGE_SIZE_MAX))
 
 
-def _filters(
-    user_id: str, start: datetime.datetime, end: datetime.datetime, api_key_id: str, endpoint: str
-) -> tuple[list[str], list[Any]]:
-    where = ["c.user_id = %s", "c.started_at >= %s", "c.started_at < %s"]
-    args: list[Any] = [user_id, start, end]
-    if api_key_id:
-        where.append("c.api_key_id = %s")
-        args.append(api_key_id)
-    if endpoint:
-        where.append("c.endpoint = %s")
-        args.append(endpoint)
-    return where, args
 
 
 def usage_summary(
@@ -101,33 +90,8 @@ def usage_summary(
     api_key_id: str = "",
     endpoint: str = "",
 ) -> dict[str, Any]:
-    where, args = _filters(user_id, start, end, api_key_id, endpoint)
-    with session.cursor() as cur:
-        cur.execute(
-            f"SELECT COUNT(*) AS total,"
-            f" SUM(c.status = 'succeeded') AS succeeded,"
-            f" SUM(c.status IN ('failed', 'interrupted')) AS failed,"
-            f" SUM(c.status IN ('accepted', 'running')) AS in_progress,"
-            f" COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
-            f" COALESCE(SUM(c.output_tokens), 0) AS output_tokens"
-            f" FROM api_calls c WHERE {' AND '.join(where)}",
-            args,
-        )
-        calls = cur.fetchone()
-        cur.execute(
-            f"SELECT COUNT(*) AS billable_calls, COALESCE(SUM(h.billable_input_tokens), 0)"
-            f" AS billable_tokens, COALESCE(SUM(h.amount_yuan), 0) AS amount"
-            f" FROM usage_charges h JOIN api_calls c ON c.id = h.call_id"
-            f" WHERE {' AND '.join(where)}",
-            args,
-        )
-        charged = cur.fetchone()
-        cur.execute(
-            f"SELECT COUNT(*) AS pending FROM api_calls c"
-            f" WHERE {' AND '.join(where)} AND c.billing_status = 'pending'",
-            args,
-        )
-        pending = cur.fetchone()
+    with session.read_session() as db:
+        calls, charged, pending = repository.usage_summary(db, user_id, start, end, api_key_id, endpoint)
     return {
         "calls_total": int(calls["total"] or 0),
         "calls_succeeded": int(calls["succeeded"] or 0),
@@ -151,25 +115,9 @@ def usage_calls(
     cursor: str = "",
 ) -> dict[str, Any]:
     size = page_size(limit)
-    where, args = _filters(user_id, start, end, api_key_id, endpoint)
     after = decode_cursor(cursor)
-    if after:
-        where.append("(c.started_at, c.id) < (%s, %s)")
-        args.extend([after[0], after[1]])
-    with session.cursor() as cur:
-        cur.execute(
-            "SELECT c.id, c.endpoint, c.model, c.status, c.http_status, c.error_code,"
-            " c.started_at, c.duration_ms, c.input_tokens, c.output_tokens,"
-            " c.billing_status, c.billing_reason, k.display_prefix, k.last_four,"
-            " p.version AS pricing_version"
-            " FROM api_calls c"
-            " JOIN api_keys k ON k.id = c.api_key_id"
-            " JOIN pricing_rules p ON p.id = c.pricing_rule_id"
-            f" WHERE {' AND '.join(where)}"
-            " ORDER BY c.started_at DESC, c.id DESC LIMIT %s",
-            (*args, size + 1),
-        )
-        rows = cur.fetchall()
+    with session.read_session() as db:
+        rows = repository.usage_calls(db, user_id, start, end, api_key_id, endpoint, after, size + 1)
     has_more = len(rows) > size
     rows = rows[:size]
     return {
@@ -209,17 +157,8 @@ def billing_summary(
     endpoint: str = "",
 ) -> dict[str, Any]:
     summary = usage_summary(user_id, start, end, api_key_id, endpoint)
-    where, args = _filters(user_id, start, end, api_key_id, endpoint)
-    with session.cursor() as cur:
-        cur.execute(
-            f"SELECT COALESCE(SUM(h.amount_yuan), 0) AS amount,"
-            f" COALESCE(SUM(h.billable_input_tokens), 0) AS tokens,"
-            f" COUNT(*) AS charges"
-            f" FROM usage_charges h JOIN api_calls c ON c.id = h.call_id"
-            f" WHERE {' AND '.join(where)}",
-            args,
-        )
-        row = cur.fetchone()
+    with session.read_session() as db:
+        row = repository.billing_summary(db, user_id, start, end, api_key_id, endpoint)
     return {
         "charged_amount_yuan": str(Decimal(str(row["amount"] or 0))),
         "billable_tokens": int(row["tokens"] or 0),
@@ -239,25 +178,9 @@ def billing_charges(
     cursor: str = "",
 ) -> dict[str, Any]:
     size = page_size(limit)
-    where, args = _filters(user_id, start, end, api_key_id, endpoint)
     after = decode_cursor(cursor)
-    if after:
-        where.append("(c.started_at, c.id) < (%s, %s)")
-        args.extend([after[0], after[1]])
-    with session.cursor() as cur:
-        cur.execute(
-            "SELECT c.id AS call_id, c.started_at, k.display_prefix, k.last_four,"
-            " h.billable_input_tokens, h.unit_tokens, h.unit_price_yuan, h.amount_yuan,"
-            " h.currency, p.version AS pricing_version"
-            " FROM usage_charges h"
-            " JOIN api_calls c ON c.id = h.call_id"
-            " JOIN api_keys k ON k.id = c.api_key_id"
-            " JOIN pricing_rules p ON p.id = h.pricing_rule_id"
-            f" WHERE {' AND '.join(where)}"
-            " ORDER BY c.started_at DESC, c.id DESC LIMIT %s",
-            (*args, size + 1),
-        )
-        rows = cur.fetchall()
+    with session.read_session() as db:
+        rows = repository.billing_charges(db, user_id, start, end, api_key_id, endpoint, after, size + 1)
     has_more = len(rows) > size
     rows = rows[:size]
     return {
@@ -288,20 +211,8 @@ def daily_series(
     endpoint: str = "",
 ) -> list[dict[str, Any]]:
     """按 UTC 日期分桶的趋势，只服务图表展示；账务事实仍是明细与费用行。"""
-    where, args = _filters(user_id, start, end, api_key_id, endpoint)
-    with session.cursor() as cur:
-        cur.execute(
-            "SELECT DATE(c.started_at) AS day,"
-            " SUM(c.status = 'succeeded') AS succeeded,"
-            " SUM(c.status IN ('failed', 'interrupted')) AS failed,"
-            " COALESCE(SUM(c.input_tokens), 0) AS tokens,"
-            " COALESCE(SUM(h.amount_yuan), 0) AS amount"
-            " FROM api_calls c LEFT JOIN usage_charges h ON h.call_id = c.id"
-            f" WHERE {' AND '.join(where)}"
-            " GROUP BY DATE(c.started_at) ORDER BY day",
-            args,
-        )
-        rows = cur.fetchall()
+    with session.read_session() as db:
+        rows = repository.daily_series(db, user_id, start, end, api_key_id, endpoint)
     return [
         {
             "date": row["day"].isoformat() if hasattr(row["day"], "isoformat") else str(row["day"]),

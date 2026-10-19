@@ -24,8 +24,8 @@ _SCENARIO = textwrap.dedent('''
     import subprocess
     import sys
     import uuid
-    from pymysql.err import OperationalError
-    from app.db import migrations, session
+    from sqlalchemy.exc import OperationalError
+    from app.db import migrations, connection as native_connection
     from app.services import api_keys, idempotency, inference, inference_recovery
 
     # Report only exception type and line positions, never driver messages or values.
@@ -41,7 +41,7 @@ _SCENARIO = textwrap.dedent('''
     def new_user():
         user_id = str(uuid.uuid4())
         email = user_id + '@example.invalid'
-        with session.cursor() as cursor:
+        with native_connection.cursor() as cursor:
             cursor.execute('INSERT INTO users (id, email, email_normalized, password_hash, '
                            'created_at, updated_at) VALUES (%s, %s, %s, %s, '
                            'UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))',
@@ -50,7 +50,7 @@ _SCENARIO = textwrap.dedent('''
 
     def new_key(user_id):
         key_id = str(uuid.uuid4())
-        with session.cursor() as cursor:
+        with native_connection.cursor() as cursor:
             cursor.execute('INSERT INTO api_keys (id, user_id, name, key_hash, display_prefix, '
                            'last_four, created_at) VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(3))',
                            (key_id, user_id, 'synthetic',
@@ -58,7 +58,7 @@ _SCENARIO = textwrap.dedent('''
         return api_keys.Principal(user_id, key_id, 'synthetic')
 
     def query(statement, parameters=None):
-        with session.cursor() as cursor:
+        with native_connection.cursor() as cursor:
             cursor.execute(statement, parameters)
             return list(cursor.fetchall())
 
@@ -107,7 +107,7 @@ _SCENARIO = textwrap.dedent('''
     rollback_key = secrets.token_urlsafe(24)
     rollback_prepared = idempotency.prepare(rollback_key, '/v1/predict', 'multilingual', body)
     before = snapshot()
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute("CREATE TRIGGER smoke_recovery_admission BEFORE INSERT ON request_idempotency "
                        "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic admission fault'")
     try:
@@ -117,7 +117,7 @@ _SCENARIO = textwrap.dedent('''
         except OperationalError:
             pass
     finally:
-        with session.cursor() as cursor:
+        with native_connection.cursor() as cursor:
             cursor.execute('DROP TRIGGER smoke_recovery_admission')
     assert snapshot() == before
     assert begin(principal, rollback_prepared).id
@@ -128,7 +128,7 @@ _SCENARIO = textwrap.dedent('''
     inference.mark_running(call)
     inference.capture_success(call, usage)
     receipt = query('SELECT * FROM inference_success_receipts WHERE call_id = %s', (call.id,))[0]
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute("CREATE TRIGGER smoke_recovery_fee BEFORE INSERT ON usage_charges "
                        "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic settlement fault'")
     try:
@@ -138,7 +138,7 @@ _SCENARIO = textwrap.dedent('''
         except OperationalError:
             pass
     finally:
-        with session.cursor() as cursor:
+        with native_connection.cursor() as cursor:
             cursor.execute('DROP TRIGGER smoke_recovery_fee')
     assert query('SELECT status, billing_status FROM api_calls WHERE id = %s', (call.id,)) == [
         {'status': 'running', 'billing_status': 'pending'}]
@@ -146,7 +146,7 @@ _SCENARIO = textwrap.dedent('''
     assert query('SELECT * FROM usage_charges WHERE call_id = %s', (call.id,)) == []
 
     # Current price changes, but recovery must retain this call's original rule.
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute('INSERT INTO pricing_rules (id, version, model, currency, token_basis, '
                        'unit_tokens, unit_price_yuan, billing_policy_version, effective_from, created_at) '
                        "VALUES (%s, %s, 'multilingual', 'CNY', 'laya_usage_input_tokens', 1000000, "
@@ -202,21 +202,21 @@ _SCENARIO = textwrap.dedent('''
 
     unknown = begin(principal)
     inference.mark_running(unknown)
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute("UPDATE api_calls SET started_at = '2000-01-01' WHERE id = %s", (unknown.id,))
     failed = begin(principal)
     inference.failed(failed, 'synthetic failure', 500)
     failed_with_receipt = begin(principal)
     inference.mark_running(failed_with_receipt)
     inference.capture_success(failed_with_receipt, usage)
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute("UPDATE api_calls SET status = 'failed', billing_status = 'not_billable', "
                        "http_status = 500, error_code = 'synthetic contradiction', "
                        'completed_at = UTC_TIMESTAMP(3) WHERE id = %s', (failed_with_receipt.id,))
     contradiction = begin(principal)
     inference.mark_running(contradiction)
     inference.capture_success(contradiction, usage)
-    with session.cursor() as cursor:
+    with native_connection.cursor() as cursor:
         cursor.execute('INSERT INTO usage_charges (id, call_id, pricing_rule_id, billable_input_tokens, '
                        'unit_tokens, unit_price_yuan, amount_yuan, currency, created_at) '
                        "VALUES (%s, %s, %s, 1, 1000000, 9.000000, 1.000000, 'CNY', UTC_TIMESTAMP(3))",

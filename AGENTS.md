@@ -10,7 +10,10 @@
 - 版本是 2026-10-02 的安装快照，非锁定版本；以实际依赖元数据复核。
 - `backend/app/`：后端。`main.py` 组装与 lifespan，`api/v1/` 路由，`schemas/` 契约，
   `services/` 账号/客服规则/模型运行时与账务，`core/` 配置/哈希/纯校验/UTC 格式化，
-  `db/session.py` 连接与事务、`db/migrations.py` 执行既有 SQL。
+  `models/` 每表一个 SQLAlchemy 映射，`repositories/` 按操作域查询/写入/锁与结果投影，
+  `db/engine.py` 惰性 Engine、`db/session.py` 短 Session/事务，`db/migrations.py` 执行既有 SQL。
+  Service 决定事务边界，不直接执行 SQL 或 ORM 查询；Repository 不自行提交或建立连接。
+  `db/connection.py` 原生连接仅供迁移执行器使用，不供业务调用。
 - `api/inference_support.py` 共享推理 HTTP 协调；路由不得互相导入内部函数。
   `schemas/` 不依赖 services/db；`integrations/openai_client.py` 负责上游协议与传输，
   不依赖服务或数据库。`services/branding.py` 管理品牌，`admin_overview.py` 管理平台聚合。
@@ -47,6 +50,8 @@
 ## 核心红线
 
 - 不擅自修改 API 字段、状态码、模型类型和客服阈值。
+- ORM 不自动建表或修改表；DDL 唯一来源仍是 migrations。Session 按操作/线程独立，
+  不跨密码哈希、模型锁等待、推理或上游 HTTP 持有事务，不向 API 返回 ORM 实体。
 - 不提交密钥、客户原文、缓存、虚拟环境或本机敏感配置。
 - 不无需求引入依赖、数据库、服务、空壳分层或基础设施。
 - 功能与修复必须同步对应验证；缺陷先复现并建立失败测试。

@@ -1,53 +1,31 @@
-"""MySQL 连接工厂与短事务。连接按操作获取并立即释放，不跨线程共享。"""
+"""Operation-local ORM sessions and service-owned short transactions."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-import pymysql
-from pymysql.cursors import DictCursor
-
-from app.core import config
-
-
-def _new_connection(autocommit: bool) -> pymysql.connections.Connection:
-    settings = config.database_config()
-    return pymysql.connect(
-        host=settings.host,
-        port=settings.port,
-        user=settings.user,
-        password=settings.password,
-        database=settings.database,
-        charset="utf8mb4",
-        cursorclass=DictCursor,
-        autocommit=autocommit,
-        connect_timeout=5,
-    )
+from app.db.engine import get_engine
+from sqlalchemy.orm import Session
 
 
 @contextmanager
-def cursor() -> Iterator[DictCursor]:
-    """单条语句的自动提交游标，用于读取和无需与原子的写入。"""
-    conn = _new_connection(autocommit=True)
-    try:
-        with conn.cursor() as cur:
-            yield cur
-    finally:
-        conn.close()
+def read_session() -> Iterator[Session]:
+    """An operation-local read session; close releases its read transaction."""
+    with Session(get_engine(), autoflush=False) as db:
+        yield db
 
 
 @contextmanager
-def transaction() -> Iterator[DictCursor]:
-    """短事务：提交成功才对外可见，异常一律回滚。"""
-    conn = _new_connection(autocommit=False)
-    try:
-        conn.begin()
-        with conn.cursor() as cur:
-            yield cur
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def unit_of_work() -> Iterator[Session]:
+    """One service-owned short business transaction, committed or rolled back once."""
+    with Session(get_engine(), autoflush=False) as db, db.begin():
+        yield db
+
+
+@contextmanager
+def pinned_session() -> Iterator[Session]:
+    """Keep connection-level locks on one physical connection across transactions."""
+    with get_engine().connect() as connection:
+        with Session(connection, autoflush=False) as db:
+            yield db

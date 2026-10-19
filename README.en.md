@@ -71,6 +71,7 @@ npm --prefix frontend test
 
 The detailed project documents below are currently in Chinese:
 
+- [Backend ORM layering and verification](docs/20261019-ORM分层-设计.md): models, repositories, services, and transaction ownership.
 - [User guide](docs/使用指南.md): configuration, deployment, administrator initialization, and API examples.
 - [Platform requirements](docs/20261002-Laya平台-需求.md) · [Self-hosting implementation plan](docs/20261008-自部署平台-任务.md)
 - [Development instructions](AGENTS.md) · [Project knowledge](docs/PROJECT_KNOWLEDGE.md)

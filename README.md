@@ -67,6 +67,7 @@ npm --prefix frontend test
 
 ## 文档
 
+- [后端 ORM 分层与验证](docs/20261019-ORM分层-设计.md)：Model、Repository、Service 和事务边界。
 - [使用指南](docs/使用指南.md)：配置、部署、管理员初始化和 API 示例。
 - [平台需求](docs/20261002-Laya平台-需求.md) · [自部署计划](docs/20261008-自部署平台-任务.md)
 - [开发入口](AGENTS.md) · [项目知识](docs/PROJECT_KNOWLEDGE.md)

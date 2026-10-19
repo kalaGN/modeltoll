@@ -29,8 +29,8 @@ class InferenceLifecycleTests(unittest.TestCase):
                 raise
 
         self.addCleanup(patch.stopall)
-        patch.object(session, 'transaction', transaction).start()
-        patch.object(session, 'cursor', transaction).start()
+        patch.object(session, 'unit_of_work', transaction).start()
+        patch.object(session, 'read_session', transaction).start()
 
         def insert_charge(cur, call_id, rule, tokens):
             if cur.charge is not None:
@@ -140,8 +140,9 @@ class InferenceLifecycleTests(unittest.TestCase):
 
         def zero_update(sql, args=()):
             original(sql, args)
-            if sql.startswith('UPDATE'):
+            if getattr(sql, 'is_update', False):
                 self.cur.rowcount = 0
+            return self.cur
 
         self.cur.execute = zero_update
         with self.assertRaises(inference.CallStateConflict):

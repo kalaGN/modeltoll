@@ -4,7 +4,9 @@ from copy import deepcopy
 from decimal import Decimal
 import unittest
 from unittest.mock import patch
-from pymysql.err import IntegrityError
+from pymysql.err import IntegrityError as DriverIntegrityError
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects import mysql
 from app.db import session
 from app.services import api_keys, billing, idempotency, inference
 
@@ -36,21 +38,27 @@ class AdmissionCursor:
         self.sql = []
         self.result = None
 
-    def execute(self, sql, args=()):
+    def execute(self, statement, args=()):
+        compiled = statement.compile(dialect=mysql.dialect())
+        sql, values = str(compiled), compiled.params
         self.sql.append(sql)
         if sql.startswith('UPDATE api_keys'):
-            self.key_updates.append(args[0])
+            self.key_updates.append(values['id_1'])
         elif sql.startswith('INSERT INTO api_calls'):
-            self.calls[args[0]] = args
+            self.calls[values['id']] = values
         elif sql.startswith('INSERT INTO request_idempotency'):
-            user, key, request, call = args
+            user, key = values['user_id'], values['key_hash']
             if (user, key) in self.reservations:
-                raise IntegrityError(1062, 'synthetic duplicate reservation')
-            self.reservations[(user, key)] = dict(call_id=call, request_hash=request)
-        elif sql.startswith('SELECT call_id, request_hash'):
-            self.result = self.reservations.get(tuple(args))
+                raise IntegrityError(sql, values, DriverIntegrityError(1062, 'synthetic duplicate reservation'))
+            self.reservations[(user, key)] = dict(call_id=values['call_id'], request_hash=values['request_hash'])
+        elif statement.is_select:
+            self.result = self.reservations.get((values['user_id_1'], values['key_hash_1']))
+        return self
 
-    def fetchone(self):
+    def mappings(self):
+        return self
+
+    def first(self):
         return self.result
 
 
@@ -72,8 +80,8 @@ class IdempotencyAdmissionTests(unittest.TestCase):
                 raise
 
         self.addCleanup(patch.stopall)
-        patch.object(session, 'transaction', transaction).start()
-        patch.object(session, 'cursor', transaction).start()
+        patch.object(session, 'unit_of_work', transaction).start()
+        patch.object(session, 'read_session', transaction).start()
         patch.object(billing, 'current_rule', return_value=rule).start()
 
     def test_duplicate_returns_original_id_and_rolls_back_new_call_and_key_update(self):
@@ -115,7 +123,7 @@ class IdempotencyAdmissionTests(unittest.TestCase):
         self.assertEqual(self.cur.reservations, {})
 
     def test_non_duplicate_database_error_is_not_misclassified(self):
-        with patch.object(self.cur, 'execute', side_effect=IntegrityError(1452, 'synthetic FK fault')):
+        with patch.object(self.cur, 'execute', side_effect=IntegrityError(None, None, DriverIntegrityError(1452, 'synthetic FK fault'))):
             with self.assertRaises(IntegrityError):
                 inference.begin('/predict', self.principal, 'model', idempotency=self.digest)
         self.assertEqual(self.cur.calls, {})

@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from unittest.mock import patch
 
+from sqlalchemy.dialects import mysql
+
 from app.core import config
 from app.services import request_limits
 
@@ -117,7 +119,7 @@ class RequestLimitsTests(unittest.TestCase):
         self.assertEqual(request_limits._inflight, {})
 
 
-class FakeCursor:
+class FakeSession:
     def __init__(self, count=0, cleanup_error=False, times=None):
         self.count = count
         self.cleanup_error = cleanup_error
@@ -125,17 +127,21 @@ class FakeCursor:
         self.queries = []
         self.result = None
 
-    def execute(self, sql, params=None):
-        self.queries.append((sql, params))
+    def execute(self, statement):
+        compiled = statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True})
+        sql = str(compiled)
+        self.queries.append((sql, compiled.params))
         if sql.startswith('DELETE') and self.cleanup_error:
             raise RuntimeError('cleanup failure')
-        if sql.startswith('SELECT UTC_TIMESTAMP'):
+        if sql.startswith('SELECT utc_timestamp'):
             self.result = {'now': next(self.times)}
-        elif sql.startswith('SELECT request_count'):
+        elif sql.startswith('SELECT request_rate_windows.request_count'):
             self.result = {'request_count': self.count}
 
-    def fetchone(self):
-        return self.result
+        return self
+
+    def scalar_one(self):
+        return next(iter(self.result.values()))
 
 
 class RPMTests(unittest.TestCase):
@@ -143,22 +149,21 @@ class RPMTests(unittest.TestCase):
         @contextmanager
         def transaction():
             yield cursor
-        with patch.object(request_limits.session, 'transaction', transaction), \
-                patch.object(request_limits.session, 'cursor', transaction):
+        with patch.object(request_limits.session, 'unit_of_work', transaction):
             request_limits._reserve_rpm('u', rpm)
 
     def test_increment_and_retention_scope(self):
-        cursor = FakeCursor()
+        cursor = FakeSession()
         self.run_reservation(cursor)
         sql = '\n'.join(q for q, _ in cursor.queries)
         self.assertIn('FOR UPDATE', sql)
         self.assertIn('UPDATE request_rate_windows', sql)
         self.assertNotIn('api_calls', sql)
         cleanup = next(q for q, _ in cursor.queries if q.startswith('DELETE'))
-        self.assertIn('UTC_TIMESTAMP(6) - INTERVAL 24 HOUR LIMIT 1000', cleanup)
+        self.assertIn('utc_timestamp(6) - INTERVAL 24 HOUR LIMIT 1000', cleanup)
 
     def test_exceeded_retry_after_and_no_increment(self):
-        cursor = FakeCursor(count=2)
+        cursor = FakeSession(count=2)
         with self.assertRaises(request_limits.RateLimitError) as caught:
             self.run_reservation(cursor)
         self.assertEqual(caught.exception.retry_after, 30)
@@ -166,27 +171,27 @@ class RPMTests(unittest.TestCase):
 
     def test_cleanup_failure_denies(self):
         with self.assertRaises(RuntimeError):
-            self.run_reservation(FakeCursor(cleanup_error=True))
+            self.run_reservation(FakeSession(cleanup_error=True))
 
     def test_cleanup_connection_closes_before_quota_transaction(self):
         events = []
         @contextmanager
         def cleanup_cursor():
             events.append('cleanup')
-            yield FakeCursor()
+            yield FakeSession()
             events.append('cleanup_closed')
         @contextmanager
         def quota_transaction():
             self.assertEqual(events, ['cleanup', 'cleanup_closed'])
             events.append('quota')
-            yield FakeCursor()
-        with patch.object(request_limits.session, 'cursor', cleanup_cursor), \
-                patch.object(request_limits.session, 'transaction', quota_transaction):
+            yield FakeSession()
+        contexts = iter([cleanup_cursor, quota_transaction])
+        with patch.object(request_limits.session, 'unit_of_work', side_effect=lambda: next(contexts)()):
             request_limits._reserve_rpm('u', 2)
         self.assertEqual(events, ['cleanup', 'cleanup_closed', 'quota'])
 
     def test_commit_failure_denies_before_body(self):
-        cursor = FakeCursor()
+        cursor = FakeSession()
         @contextmanager
         def failed_commit():
             yield cursor
@@ -194,8 +199,8 @@ class RPMTests(unittest.TestCase):
         @contextmanager
         def cleanup_cursor():
             yield cursor
-        with patch.object(request_limits.session, 'transaction', failed_commit), \
-                patch.object(request_limits.session, 'cursor', cleanup_cursor), \
+        contexts = iter([cleanup_cursor, failed_commit])
+        with patch.object(request_limits.session, 'unit_of_work', side_effect=lambda: next(contexts)()), \
                 patch.object(config, 'request_limits_config', return_value=config.RequestLimits(2, 1)):
             with self.assertRaises(request_limits.RateLimitError) as caught:
                 with request_limits.admit('u'):
@@ -204,17 +209,17 @@ class RPMTests(unittest.TestCase):
         self.assertEqual(request_limits._inflight, {})
 
     def test_midnight_boundary_retries_new_window(self):
-        first = FakeCursor(times=[datetime(2026, 10, 9, 23, 59, 59), datetime(2026, 10, 10, 0, 0)])
-        second = FakeCursor(times=[datetime(2026, 10, 10, 0, 0)] * 2)
+        first = FakeSession(times=[datetime(2026, 10, 9, 23, 59, 59), datetime(2026, 10, 10, 0, 0)])
+        second = FakeSession(times=[datetime(2026, 10, 10, 0, 0)] * 2)
         cursors = iter([first, second])
         @contextmanager
         def transaction():
             yield next(cursors)
         @contextmanager
         def cleanup_cursor():
-            yield FakeCursor()
-        with patch.object(request_limits.session, 'transaction', transaction), \
-                patch.object(request_limits.session, 'cursor', cleanup_cursor):
+            yield FakeSession()
+        contexts = iter([cleanup_cursor, transaction, transaction])
+        with patch.object(request_limits.session, 'unit_of_work', side_effect=lambda: next(contexts)()):
             request_limits._reserve_rpm('u', 2)
         self.assertFalse(any(q.startswith('UPDATE') for q, _ in first.queries))
         self.assertTrue(any(q.startswith('UPDATE') for q, _ in second.queries))

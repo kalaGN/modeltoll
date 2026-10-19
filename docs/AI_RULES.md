@@ -25,7 +25,7 @@
 - 登录写操作必须带 Double-Submit CSRF，会话使用 HttpOnly Cookie；对外暴露仍待安全 Spec。
 - 明确需求要求的范围才扩展；不主动引入消息队列、缓存服务或设计未覆盖的数据层。
 - 代码按 [架构设计](20261002-Laya平台-设计.md) 组织：后端在 `backend/app`
-  （`api/v1`、`core`、`db`、`schemas`、`services`），前端在 `frontend/`，
+  （`api/v1`、`core`、`db`、`schemas`、`services`、`models`、`repositories`），前端在 `frontend/`，
   启动器与客服 CLI 留在根目录。不建空壳层，不提前创建未实现的模块。
 - 前端按 [工程结构设计](20261018-工程结构整理-设计.md) 组织：HTML 仅放
   `src/pages/templetes/`，页面模块在 `pages/`，公共 HTTP/lib/UI/console 在 `shared/`，
@@ -56,6 +56,15 @@
   `0002_api_keys.sql`、`0003_billing.sql`、`0004_api_key_deletion.sql`、`0005_user_admin.sql`、`0006_platform_settings.sql`、`0007_model_gateway.sql`、`0008_admin_audit.sql`、`0009_request_rate_windows.sql`、`0010_success_receipts.sql`、`0011_request_idempotency.sql`），成功回执表`inference_success_receipts`只保存可信完成事实/计量，`request_idempotency`只保存user范围Key及请求摘要，不保存正文。不虚构未设计的表。`api_calls` 与
   `usage_charges` 是账务事实，不做原地改写。
 - 数据库凭据只放根目录 `.env`（已忽略），不提交、不写日志。
+- 持久化按[ORM 分层设计](20261019-ORM分层-设计.md)：Service 编排短事务，Repository
+  接收 Session 并返回普通投影，Model 只映射表；禁止 Service SQL/ORM 查询和 Repository
+  自行 commit/rollback/connect。允许业务层识别 SQLAlchemy IntegrityError，但须先退出
+  失败事务完成 rollback 再查询去重赢家，不把任意约束错误当重复请求。
+- Engine 惰性且 NullPool，Session 按操作/线程独立、autoflush=False，关键写入立即执行；
+  不跨密码哈希、推理锁等待、模型推理或 HTTP 持有业务事务。成功回执独立提交，终态与
+  费用同事务，Bootstrap 命名锁绑定同一物理连接；不通过 ORM create_all/自动同步 schema。
+- Model 精度、UNSIGNED、UTC 时间、collation、复合约束必须匹配已审查 SQL；
+  DDL 修改仍走 migrations，禁止 relationship 懒加载输出或隐式 cascade 改写历史账务。
 
 ## 接口与编码
 

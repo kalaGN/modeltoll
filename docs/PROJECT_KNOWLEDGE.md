@@ -11,6 +11,23 @@
 边界仍待产品确认。
 下文描述当前代码，不将需求目标冒充已具备的功能。
 
+## 2026-10-19 ORM 分层
+
+按[ORM 设计](20261019-ORM分层-设计.md)切换全部业务持久化：API → Service → Repository →
+Model/MySQL。13 张表各有一个 models 模块，八个 repositories 模块按操作域组织；
+没有通用 DAO、自动关系加载或第二套 schema 生成器。SQLAlchemy 实际安装为 2.1.5，
+requirements-api.txt 声明 >=2.1.5,<2.2，仍非锁文件。PyMySQL 继续作为驱动。
+
+db/engine.py 惰性 URL.create/NullPool/hide_parameters，db/session.py 提供 read_session、
+unit_of_work、pinned_session，旧 cursor/transaction 接口已移除。原生 db/connection.py 仅供
+迁移器；backend/migrations/*.sql 内容未变，启动策略不变，禁止 ORM 自动建表。
+Service 只识别业务结果和拥有事务，不导入 Model 或执行查询；Repository 返回普通投影，
+不连接或提交。成功回执仍独立提交，终态与费用原子结算，去重失败先 rollback 再读赢家。
+管理员初始化保持单物理连接命名锁，结束 GET_LOCK 的 autobegin 后再开启业务事务。
+
+验证命令及真实隔离 MySQL 证据见[ORM 任务](20261019-ORM分层-任务.md)。本次未重启
+现有 API/前端，也未操作本机业务库或提交；此前章节中的验证数量是当时历史记录。
+
 ## 2026-10-19 后端职责边界
 
 实施依据为[职责修复设计](20261018-后端职责修复-设计.md)，不是全面落地旧分层草案。
@@ -22,9 +39,9 @@ core/time.py 统一既有 UTC 格式化。services/gateway.py 管理连接和价
 
 品牌服务为 services/branding.py，管理员聚合为 services/admin_overview.py；公开品牌路由
 在 api/v1/platform.py，管理员设置与总览保留在 admin.py。db/migrations.py 是迁移执行器，
-不是 ORM 模型；db/session.py 保留连接与事务。main/manage 入口、启动迁移策略与模型锁不变。
+不是 ORM 模型；后续 ORM 分层见上节。main/manage 入口、启动迁移策略与模型锁不变。
 恢复通过 inference 的 success_receipt/validate_usage/usage_values/settle_success_in_transaction
-复用原有结算；事务游标由调用方持有，没有拆分提交。
+复用原有结算；当前 Session 由调用方持有，没有拆分结算提交。
 
 完整 OpenAPI 与迁移前相同；默认回归 194 项（190 通过、4 opt-in 跳过）。本切片未重启服务、
 未访问真实数据库或模型，未重新执行容器验证；具体命令与范围见[任务记录](20261018-后端职责修复-任务.md)。
@@ -104,7 +121,7 @@ api/request_body.py 提供有限字节读取；网关 256 KB/解析前和品牌 
 Key 与统计链路：独立前端 `/keys`、`/usage`、`/billing` 检查登录状态并导航
 到 `/login`；实际 `/v1/api-keys*` 仍走服务端会话 + CSRF → `services/api_keys`；
 `/v1/usage/*`、`/v1/billing/*` 走 `dependencies.require_user` → `services/statistics`，
-所有 SQL 都带 `c.user_id = %s` 范围，明细用 `(started_at, id)` keyset 游标分页。
+Repository 查询都带认证 `user_id` 范围，明细用 `(started_at, id)` keyset 游标分页。
 
 推理链路：HTTP → `Authorization: Bearer` → `api_keys.authenticate`（SHA-256 查库，
 撤销/无效 401、停用账号 403）→ Pydantic 校验 → `inference.begin` 插入 `accepted`
@@ -119,8 +136,8 @@ lifespan 顺序是先 `db/migrations.init_db()` 执行迁移 SQL，再创建 `Ro
 `services/model_runtime.py` 持有推理锁与模型构建，`main.py` 注入运行时，
 底层模块不反向 import app。
 
-数据库连接按操作获取并立即释放（`db/session.py` 的 `cursor()` 自动提交、
-`transaction()` 短事务）；口令 Argon2 验证在写事务之外完成，避免长时间持有事务。
+数据库连接按操作获取并立即释放（`db/session.py` 的 `read_session()` 只读范围、
+`unit_of_work()` 短事务）；口令 Argon2 哈希及验证在事务之外完成，避免长时间持有事务。
 没有跨请求共享的可变 Session/事务对象。
 
 `run-api` 设置 `HF_HOME` 为项目缓存、`HF_HUB_OFFLINE=1`、`PYTHONPATH=backend`、

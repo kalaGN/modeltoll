@@ -3,6 +3,7 @@ import datetime
 import unittest
 from contextlib import contextmanager
 from unittest.mock import patch
+from sqlalchemy.dialects import mysql
 
 from fastapi.testclient import TestClient
 from app.api import dependencies
@@ -19,8 +20,16 @@ class Cursor:
         self.record = record
         self.queries = []
 
-    def execute(self, sql, params):
-        self.queries.append((sql, params))
+    def execute(self, statement):
+        compiled = statement.compile(dialect=mysql.dialect())
+        self.queries.append((str(compiled), compiled.params))
+        return self
+
+    def mappings(self):
+        return self
+
+    def first(self):
+        return self.record
 
     def fetchone(self):
         return self.record
@@ -33,7 +42,7 @@ def use_cursor(cursor):
 
 class DeletionServiceTests(unittest.TestCase):
     def run_delete(self, cursor):
-        with patch.object(api_keys.session, "cursor", return_value=use_cursor(cursor)):
+        with patch.object(api_keys.session, "unit_of_work", return_value=use_cursor(cursor)):
             api_keys.delete(USER_ID, KEY_ID)
 
     def test_only_owner_revoked_undeleted_row_can_be_updated(self):
@@ -43,7 +52,8 @@ class DeletionServiceTests(unittest.TestCase):
         self.assertIn("user_id = %s", sql)
         self.assertIn("revoked_at IS NOT NULL", sql)
         self.assertIn("deleted_at IS NULL", sql)
-        self.assertEqual(params, (KEY_ID, USER_ID))
+        self.assertEqual(params['id_1'], KEY_ID)
+        self.assertEqual(params['user_id_1'], USER_ID)
 
     def test_active_key_conflict(self):
         with self.assertRaises(api_keys.ApiKeyNotRevoked):
@@ -54,7 +64,7 @@ class DeletionServiceTests(unittest.TestCase):
         with self.assertRaises(api_keys.ApiKeyNotFound):
             self.run_delete(cursor)
         self.assertIn("user_id = %s", cursor.queries[1][0])
-        self.assertEqual(cursor.queries[1][1], (KEY_ID, USER_ID))
+        self.assertEqual(cursor.queries[1][1], {'id_1': KEY_ID, 'user_id_1': USER_ID})
 
     def test_repeat_delete_is_success_without_another_update(self):
         now = datetime.datetime(2026, 10, 7)

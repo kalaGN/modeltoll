@@ -12,10 +12,8 @@ class LoginStatusRaceTests(unittest.TestCase):
         original = {'id': 'user-id', 'email': 'user@example.com',
                     'password_hash': 'original-hash', 'status': 'active'}
         read = Mock()
-        read.fetchone.side_effect = [None, original]
         write = Mock()
         # The locked re-read sees the administrator's committed disable.
-        write.fetchone.side_effect = [None, {**original, 'status': 'disabled'}]
 
         @contextmanager
         def read_cursor():
@@ -25,15 +23,17 @@ class LoginStatusRaceTests(unittest.TestCase):
         def write_cursor():
             yield write
 
-        with patch.object(accounts.session, 'cursor', read_cursor), \
-             patch.object(accounts.session, 'transaction', write_cursor), \
+        with patch.object(accounts.session, 'read_session', read_cursor), \
+             patch.object(accounts.session, 'unit_of_work', write_cursor), \
+             patch.object(accounts.repository, 'throttle', return_value=None), \
+             patch.object(accounts.repository, 'login_user', return_value=original), \
+             patch.object(accounts.repository, 'lock_credentials', return_value={**original, 'status': 'disabled'}) as lock, \
              patch.object(accounts.security, 'verify_password', return_value=True), \
              patch.object(accounts, '_create_session', return_value='must-not-be-issued') as create:
             with self.assertRaises(accounts.DisabledAccount):
                 accounts.login('user@example.com', 'password', '127.0.0.1')
             create.assert_not_called()
-        self.assertTrue(any('FOR UPDATE' in call.args[0]
-                            for call in write.execute.call_args_list))
+        lock.assert_called_once_with(write, original['id'])
 
 
 if __name__ == '__main__':

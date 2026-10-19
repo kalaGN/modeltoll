@@ -142,7 +142,7 @@ class ManagementHttpTests(unittest.TestCase):
             change.assert_not_called()
 
     def test_reason_is_trimmed_and_service_errors_are_preserved(self):
-        with patch.object(management, 'set_user_status', return_value={'code': 'ok', 'changed': True}) as change:
+        with patch.object(management, 'set_user_status', return_value={'changed': True}) as change:
             result = self.client.patch(f'/v1/admin/users/{TARGET}/status',
                                       json={'status': 'disabled', 'reason': '  policy  '}, headers=self.headers)
             self.assertEqual(result.status_code, 200)

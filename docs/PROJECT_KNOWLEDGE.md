@@ -31,6 +31,19 @@ core/time.py 统一既有 UTC 格式化。services/gateway.py 管理连接和价
 
 ## 知识索引
 
+2026-10-19 成功响应整理：认证、Key、品牌、管理员、连接配置、统计 API 的成功内容
+显式使用 api/responses.py 的 success；不增加 data 层、不改 created/201、Cookie 或错误。
+本阶段管理员服务已有 code 暂保留并由 API 边界接收（后续公共逻辑整理已移除）；推理、OpenAI 输出、Logo、health 不包装。
+完整 OpenAPI 相同，默认回归 204 项（200 通过、4 opt-in 跳过）；本轮未提交或重启服务。
+实施与其他重复分析见[成功响应任务](20261019-成功响应封装-任务.md)。
+
+同日后续用户确认四项全部优化：api/errors.py 提供显式错误内容和 HTTP 异常构造，
+api/request_body.py 提供有限字节读取；网关 256 KB/解析前和品牌 3 MB/鉴权及 CSRF 后
+的原执行顺序保留。services/admin_management.py 不再返回 code；API success 添加原成功字段。
+统计四个接口使用 responses.utc_range，复用 core.time.iso_utc，范围解析与 UTC 政策不变。
+最终默认回归 224 项（220 通过、4 opt-in 跳过）、完整 OpenAPI 相同；未重启运行服务或
+操作真实数据库/模型，未提交。详细边界见[公共逻辑整理任务](20261019-公共逻辑整理-任务.md)。
+
 | 章节 | 内容 | 何时读取 |
 | --- | --- | --- |
 | 项目盘点 | 技术栈、入口、目录、基础设施 | 入门与环境排查 |

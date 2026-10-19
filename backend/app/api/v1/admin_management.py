@@ -3,9 +3,11 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 
 from app.api import dependencies
+from app.api.errors import http_error
+from app.api.responses import success
 from app.schemas.admin_management import ReasonRequest, UserStatusRequest
 from app.services import accounts, admin_management as management
 
@@ -14,9 +16,9 @@ router = APIRouter(prefix='/v1/admin', tags=['admin-management'])
 
 def _call(function, *args):
     try:
-        return function(*args)
+        return success(**function(*args))
     except management.ManagementError as exc:
-        raise HTTPException(exc.status_code, detail={'code': exc.code, 'message': exc.message}) from None
+        raise http_error(exc.status_code, exc.code, exc.message) from None
 
 
 @router.get('/users')

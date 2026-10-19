@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 
+from app.api.errors import http_error
 from app.core import config, security
 from app.services import accounts, api_keys, request_limits
 
@@ -18,11 +19,7 @@ def admit_inference(principal: api_keys.Principal):
             yield
     except request_limits.RateLimitError as exc:
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"code": exc.code, "message": exc.message},
-            headers=headers,
-        ) from None
+        raise http_error(exc.status_code, exc.code, exc.message, headers=headers) from None
 
 
 def session_token(request: Request) -> str:
@@ -36,10 +33,7 @@ def current_user(request: Request) -> accounts.User | None:
 def require_user(request: Request) -> accounts.User:
     user = current_user(request)
     if user is None:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "unauthenticated", "message": "登录状态无效或已过期"},
-        )
+        raise http_error(401, "unauthenticated", "登录状态无效或已过期")
     return user
 
 
@@ -48,19 +42,13 @@ def require_api_key(request: Request) -> api_keys.Principal:
     try:
         return api_keys.authenticate(request.headers.get("Authorization", ""))
     except api_keys.ApiKeyError as exc:
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"code": exc.code, "message": exc.message},
-        ) from None
+        raise http_error(exc.status_code, exc.code, exc.message) from None
 
 
 def require_csrf(request: Request, header_value: str) -> None:
     """双重提交 Cookie：会话建立前的写操作也要求，避免会话固定与跨站表单提交。"""
     if not security.csrf_matches(request.cookies.get(config.CSRF_COOKIE, ""), header_value):
-        raise HTTPException(
-            status_code=403,
-            detail={"code": "csrf_failed", "message": "缺少或错误的 CSRF 令牌"},
-        )
+        raise http_error(403, "csrf_failed", "缺少或错误的 CSRF 令牌")
 
 
 def issue_csrf_cookie(response, token: str) -> None:
@@ -76,8 +64,5 @@ def issue_csrf_cookie(response, token: str) -> None:
 
 def require_admin(user: accounts.User = Depends(require_user)) -> accounts.User:
     if not user.is_admin:
-        raise HTTPException(
-            status_code=403,
-            detail={"code": "admin_required", "message": "需要管理员权限"},
-        )
+        raise http_error(403, "admin_required", "需要管理员权限")
     return user

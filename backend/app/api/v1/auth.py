@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api import dependencies
+from app.api.errors import error_content
+from app.api.responses import success
 from app.core import config, security
 from app.schemas.auth import CredentialsRequest
 from app.services import accounts
@@ -18,7 +20,7 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 def auth_failed(exc: accounts.AuthError) -> JSONResponse:
     return JSONResponse(
-        status_code=exc.status_code, content={"code": exc.code, "message": exc.message}
+        status_code=exc.status_code, content=error_content(exc.code, exc.message)
     )
 
 
@@ -39,7 +41,7 @@ def set_session_cookie(response: JSONResponse, token: str) -> JSONResponse:
 def csrf_token():
     """为无 Cookie 的客户端签发 CSRF 令牌；页面加载时也会自动下发。"""
     token = security.new_csrf_token()
-    response = JSONResponse({"code": "ok", "csrf_token": token})
+    response = JSONResponse(success(csrf_token=token))
     dependencies.issue_csrf_cookie(response, token)
     return response
 
@@ -58,7 +60,7 @@ def register(
         logger.info("Register rejected code=%s source=%s", exc.code, source)
         return auth_failed(exc)
     logger.info("Registered user id=%s", user.id)
-    return JSONResponse(status_code=201, content={"code": "created", "user": user.public})
+    return JSONResponse(status_code=201, content=success(code="created", user=user.public))
 
 
 @router.post("/login")
@@ -80,7 +82,7 @@ def login(
         raise HTTPException(status_code=500, detail="会话创建异常")
     logger.info("Login succeeded user id=%s", user.id)
     return set_session_cookie(
-        JSONResponse({"code": "ok", "user": user.public}), token
+        JSONResponse(success(user=user.public)), token
     )
 
 
@@ -88,11 +90,11 @@ def login(
 def logout(request: Request, x_csrf_token: str = Header(default="")):
     dependencies.require_csrf(request, x_csrf_token)
     accounts.logout(dependencies.session_token(request))
-    response = JSONResponse({"code": "ok"})
+    response = JSONResponse(success())
     response.delete_cookie(key=config.SESSION_COOKIE, path="/")
     return response
 
 
 @router.get("/me")
 def me(user: accounts.User = Depends(dependencies.require_user)):
-    return {"code": "ok", "user": user.public}
+    return success(user=user.public)

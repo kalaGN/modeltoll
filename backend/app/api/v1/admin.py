@@ -8,6 +8,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.api import dependencies
+from app.api.errors import error_content, http_error
+from app.api.request_body import read_limited_body
+from app.api.responses import success
 from app.schemas.platform import SettingsRequest
 from app.services import accounts, admin_overview, branding, statistics
 
@@ -24,10 +27,10 @@ def overview(
     try:
         start, end = statistics.parse_range(date_from, date_to)
     except statistics.StatsError as exc:
-        raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from None
+        raise http_error(400, exc.code, exc.message) from None
     if end - start > datetime.timedelta(days=366):
-        raise HTTPException(status_code=400, detail={"code": "invalid_range", "message": "时间范围不能超过 366 天"})
-    return {"code": "ok", **admin_overview.overview(start, end)}
+        raise http_error(400, "invalid_range", "时间范围不能超过 366 天")
+    return success(**admin_overview.overview(start, end))
 
 
 @router.put("/v1/admin/settings", openapi_extra={
@@ -42,11 +45,9 @@ async def settings(
 ):
     dependencies.require_csrf(request, x_csrf_token)
     # 在读取整个 JSON 前限制流大小，避免无 Content-Length 或伪造长度绕过。
-    parts = bytearray()
-    async for chunk in request.stream():
-        if len(parts) + len(chunk) > MAX_BODY:
-            raise HTTPException(status_code=413, detail={"code": "body_too_large", "message": "配置请求过大"})
-        parts.extend(chunk)
+    parts = await read_limited_body(
+        request, MAX_BODY, detail=error_content("body_too_large", "配置请求过大"),
+    )
     try:
         body = SettingsRequest.model_validate(json.loads(parts))
     except ValueError:
@@ -57,4 +58,4 @@ async def settings(
         saved = await run_in_threadpool(branding.save_settings, body.name, body.description, body.logo_data_url)
     except branding.InvalidLogo as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    return {"code": "ok", "branding": saved}
+    return success(branding=saved)

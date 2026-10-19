@@ -104,6 +104,12 @@ class ManagementServiceTests(unittest.TestCase):
         self.assertEqual(locks, sorted([ACTOR, TARGET]))
         self.assertFalse(any('api_calls' in sql or 'usage_charges' in sql for sql, _ in self.db.statements))
 
+    def test_mutations_return_business_fields_without_http_code(self):
+        user = management.set_user_status(ACTOR, TARGET, 'disabled', 'policy')
+        key = management.revoke_key(ACTOR, KEY, 'rotation')
+        self.assertEqual(set(user), {'user', 'changed'})
+        self.assertEqual(set(key), {'api_key', 'changed'})
+
     def test_repeated_disable_has_no_additional_audit(self):
         management.set_user_status(ACTOR, TARGET, 'disabled', 'first')
         result = management.set_user_status(ACTOR, TARGET, 'disabled', 'again')
@@ -243,6 +249,17 @@ class ManagementPaginationTests(unittest.TestCase):
         result = management.list_audit_events()
         self.assertEqual(result['items'][0]['created_at'], '2026-10-08T12:00:00Z')
         self.assertFalse(result['has_more'])
+
+    def test_all_listing_services_return_only_business_page_fields(self):
+        self.cur.fetchall.return_value = []
+        cases = [(management.list_users, (), [{'total': 0}]),
+                 (management.list_keys, (TARGET,), [{'id': TARGET}, {'total': 0}]),
+                 (management.list_audit_events, (), [{'total': 0}])]
+        for function, args, rows in cases:
+            with self.subTest(function=function.__name__):
+                self.cur.fetchone.side_effect = rows
+                result = function(*args)
+                self.assertEqual(set(result), {'items', 'page', 'limit', 'total', 'has_more'})
 
 
 if __name__ == '__main__':

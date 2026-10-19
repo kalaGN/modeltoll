@@ -6,10 +6,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, Request
 
 from app.api import dependencies, inference_support
 from app.api.dependencies import require_api_key
+from app.api.errors import http_error
 from app.schemas.inference import CustomerServiceRequest, PredictRequest
 from app.services import api_keys, customer_service, inference, model_runtime
 
@@ -76,4 +77,4 @@ def predict(
 
 def _require_local_router(request: Request) -> None:
     if getattr(request.app.state, 'router', None) is None:
-        raise HTTPException(503, detail={'code': 'local_model_disabled', 'message': '当前模式未加载本地 Laya 模型'})
+        raise http_error(503, 'local_model_disabled', '当前模式未加载本地 Laya 模型')

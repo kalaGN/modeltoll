@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.api import dependencies
+from app.api.errors import http_error
+from app.api.responses import success
 from app.schemas.api_keys import CreateKeyRequest, RevokeRequest
 from app.services import accounts, api_keys
 
@@ -18,7 +20,7 @@ router = APIRouter(prefix="/v1/api-keys", tags=["api-keys"])
 
 
 def _as_http(exc: api_keys.ApiKeyError) -> HTTPException:
-    return HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+    return http_error(exc.status_code, exc.code, exc.message)
 
 
 @router.post("")
@@ -33,12 +35,9 @@ def create_key(
     logger.info("API key created id=%s user_id=%s", record.id, user.id)
     return JSONResponse(
         status_code=201,
-        content={
-            "code": "created",
-            "api_key": record.public,
-            "secret": secret,
-            "call_example": _example(secret),
-        },
+        content=success(
+            code="created", api_key=record.public, secret=secret, call_example=_example(secret),
+        ),
     )
 
 
@@ -46,15 +45,14 @@ def create_key(
 def list_keys(user: accounts.User = Depends(dependencies.require_user)):
     records = api_keys.list_for_user(user.id)
     active = [row.public for row in records if row.status == "active"]
-    return {
-        "code": "ok",
-        "items": [row.public for row in records],
-        "summary": {
+    return success(
+        items=[row.public for row in records],
+        summary={
             "total": len(records),
             "active": len(active),
             "revoked": len(records) - len(active),
         },
-    }
+    )
 
 
 @router.post("/{key_id}/revoke")
@@ -73,7 +71,7 @@ def revoke_key(
     except api_keys.ApiKeyError as exc:
         raise _as_http(exc) from None
     logger.info("API key revoked id=%s user_id=%s", key_id, user.id)
-    return {"code": "ok", "api_key": record.public}
+    return success(api_key=record.public)
 
 
 @router.delete("/{key_id}")
@@ -91,7 +89,7 @@ def delete_key(
     except api_keys.ApiKeyError as exc:
         raise _as_http(exc) from None
     logger.info("API key deleted from list id=%s user_id=%s", key_id, user.id)
-    return {"code": "ok"}
+    return success()
 
 
 def _is_uuid(value: str) -> bool:

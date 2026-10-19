@@ -39,7 +39,7 @@ def _key(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _page(items: list, page: int, limit: int, total: int) -> dict[str, Any]:
-    return {'code': 'ok', 'items': items, 'page': page, 'limit': limit,
+    return {'items': items, 'page': page, 'limit': limit,
             'total': total, 'has_more': page * limit < total}
 
 
@@ -136,7 +136,7 @@ def set_user_status(actor_id: str, user_id: str, status: str, reason: str) -> di
                             ' WHERE user_id = %s AND revoked_at IS NULL', (user_id,))
             _audit(cur, actor_id, user_id, None, 'user.status_changed', target['status'], status, reason)
         result = _user({**target, 'status': status})
-    return {'code': 'ok', 'user': result, 'changed': changed}
+    return {'user': result, 'changed': changed}
 
 
 def revoke_key(actor_id: str, key_id: str, reason: str) -> dict:
@@ -161,4 +161,4 @@ def revoke_key(actor_id: str, key_id: str, reason: str) -> dict:
             _audit(cur, actor_id, key['user_id'], key_id, 'api_key.revoked', 'active', 'revoked', reason)
             key = {**key, 'revoked_at': now}
         result = _key(key)
-    return {'code': 'ok', 'api_key': result, 'changed': changed}
+    return {'api_key': result, 'changed': changed}

@@ -60,6 +60,12 @@
 ## 接口与编码
 
 - 以 `backend/app/schemas` 的 Pydantic 模型和生成 OpenAPI 为契约源，入口 `app.main:app`。
+- 管理类成功内容通过 `api/responses.py` 的 `success()` 显式构造，保持原平铺字段；
+  201、Cookie 和响应头仍由路由处理。不得用中间件包装推理/OpenAI 兼容输出、图片或 health。
+- 简单公开错误通过 `api/errors.py` 显式构造，保留原异常类型分支、状态码与响应头，
+  不增加 catch-all。有限正文读取通过 `api/request_body.py`，调用方保留权限/CSRF/解析顺序
+  和各自字节上限。管理服务仅返回业务数据，code 归 API；统计 range 使用 utc_range，
+  上游 parse_range 负责 UTC 归一，不能借格式化合并跨度策略。
 - 保持现有推理路径、JSON 字段和 200/422/500 语义；记账只追加 `X-Request-Id` 响应头，
   不改业务字段。推理接口仍无统一响应包裹或业务码。
 - 新增的 `/v1/auth/*`、`/v1/api-keys/*`、`/v1/usage/*`、`/v1/billing/*` 使用平铺

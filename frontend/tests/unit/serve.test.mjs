@@ -4,8 +4,8 @@ import { staticPath, createFrontendServer } from "../../scripts/serve.mjs";
 
 test("frontend owns explicit pages and safe assets only", () => {
   assert.equal(staticPath("/"), "index.html");
-  assert.equal(staticPath("/admin/settings"), "admin-settings.html");
-  assert.equal(staticPath("/assets/pages/keys.js"), "pages/keys.js");
+  assert.equal(staticPath("/admin/settings"), "index.html");
+  assert.equal(staticPath("/assets/KeysPage-hashed.js"), "assets/KeysPage-hashed.js");
   for (const route of ["/missing", "/assets/../.env", "/assets/%2e%2e/.env", "/assets/%2fetc/passwd", "/assets/a%5cb", "/assets/login.html", "/assets/%00x"]) assert.equal(staticPath(route), null, route);
 });
 

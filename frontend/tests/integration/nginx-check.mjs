@@ -57,7 +57,8 @@ try {
   for (const route of ["/unknown", "/login.html", "/assets/login.html"]) {
     const response = await fetch(base + route); assert.equal(response.status, 404, route); await response.text();
   }
-  const module = await fetch(base + "/assets/pages/login.js");
+  const html = await readFile(path.join(root, "dist/index.html"), "utf8");
+  const module = await fetch(base + html.match(/<script[^>]+src="([^"]+)"/)[1]);
   assert.equal(module.status, 200); assert.match(module.headers.get("content-type"), /javascript/); await module.text();
   const csrf = await fetch(base + "/v1/auth/csrf");
   assert.match(csrf.headers.get("set-cookie"), /laya_csrf=fixture/); await csrf.json();

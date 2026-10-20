@@ -4,7 +4,7 @@
 
 A self-hosted platform for model APIs, API key management, and token billing. Supports local Laya models and external OpenAI-compatible chat endpoints, with email/password login, usage and cost reports, an admin dashboard, branding settings, and user management.
 
-![Platform settings preview (example)](docs/platform-settings-preview.jpg)
+![Vue login preview (synthetic environment)](docs/vue-login-preview.png)
 
 ## Per-user request limits
 
@@ -63,15 +63,19 @@ Docker uses a separate Nginx frontend on `APP_PORT`; the Python API image contai
 
 ```bash
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
+npm --prefix frontend run typecheck
 npm --prefix frontend run build
 npm --prefix frontend test
 ```
+
+The frontend uses Vue 3, TypeScript, Vite and Tailwind, deployed independently of the API.
 
 ## Documentation
 
 The detailed project documents below are currently in Chinese:
 
 - [Backend ORM layering and verification](docs/20261019-ORM分层-设计.md): models, repositories, services, and transaction ownership.
+- [Vue frontend architecture and verification](docs/20261020-Vue前端重做-设计.md)
 - [User guide](docs/使用指南.md): configuration, deployment, administrator initialization, and API examples.
 - [Platform requirements](docs/20261002-Laya平台-需求.md) · [Self-hosting implementation plan](docs/20261008-自部署平台-任务.md)
 - [Development instructions](AGENTS.md) · [Project knowledge](docs/PROJECT_KNOWLEDGE.md)

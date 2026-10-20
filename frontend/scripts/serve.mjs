@@ -5,7 +5,7 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const pages = Object.freeze({ "/": "index.html", "/login": "login.html", "/register": "login.html", "/keys": "api-keys.html", "/usage": "usage.html", "/billing": "billing.html", "/admin": "admin.html", "/admin/settings": "admin-settings.html", "/admin/users": "admin-users.html" });
+export const pages = Object.freeze(Object.fromEntries(["/", "/login", "/register", "/keys", "/usage", "/billing", "/admin", "/admin/settings", "/admin/users"].map(route => [route, "index.html"])));
 const defaultDist = fileURLToPath(new URL("../dist/", import.meta.url));
 const hop = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
 function headersWithoutHop(headers) {
@@ -19,7 +19,7 @@ export function staticPath(rawPath) {
   let relative;
   try { relative = decodeURIComponent(rawPath.slice(8)); } catch { return null; }
   if (!relative || relative.includes("\\") || relative.split("/").some(part => !part || part === "." || part === "..") || relative.includes("\0") || relative.endsWith(".html")) return null;
-  return relative;
+  return "assets/" + relative;
 }
 
 export function createFrontendServer({ apiOrigin = "http://127.0.0.1:8000", dist = defaultDist } = {}) {

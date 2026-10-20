@@ -3,10 +3,11 @@
 !nginx.conf
 !package.json
 !package-lock.json
+!index.html
+!vite.config.ts
+!tsconfig.json
 !src/
 !src/**
-!scripts/
-!scripts/build.mjs
 **/.env
 **/.env.*
 **/*.key

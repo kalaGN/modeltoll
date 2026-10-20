@@ -6,7 +6,10 @@
 @import "./styles/login.css";
 @import "./styles/responsive.css";
 @import "./styles/admin.css";
+@import "./styles/vue.css";
 
 /* Include templates and nested ES modules, independent of the command cwd. */
 @source "./pages";
 @source "./shared";
+@source "./components";
+@source "./layouts";

@@ -11,6 +11,17 @@
 边界仍待产品确认。
 下文描述当前代码，不将需求目标冒充已具备的功能。
 
+## 2026-10-20 Vue 前端重做
+
+用户确认 Vue 全量迁移并要求提交推送。前端现为 Vue 3.5.44 / Router 4.6.4 / Vite 8.3.4 /
+TypeScript 5.9.3，Tailwind 4.3.3；版本以 package-lock.json/npm ls 为准。实际开发 Node 24.22.0。
+唯一 HTML 是 frontend/index.html，pages/{auth,console,admin} 为 SFC，布局和状态由 Vue 管理；
+移除旧页面 HTML/JS、DOM 工具和旧 build.mjs，共 28 个文件，Git 可恢复。
+保留现有视觉、全部 URL、Cookie/CSRF、角色守卫、Key 生命周期、统计与管理功能；
+接口字段/状态码不变，没有修改数据库。开发使用 Vite HMR/固定代理，生产仍独立 Nginx。
+新增 vue-tsc、Vitest，保留 Node 与真实浏览器/代理测试，详情见[Vue 任务](20261020-Vue前端重做-任务.md)。
+此前“pages/templetes 固定入口”和“无前端类型检查”记录是历史状态，以本节及最新规则为准。
+
 ## 2026-10-19 Service 业务分组
 
 按[业务分组设计](20261019-Service业务分组-设计.md)，15 个模块归入 access（4）、
@@ -93,11 +104,10 @@ api/request_body.py 提供有限字节读取；网关 256 KB/解析前和品牌 
 - `backend/app/main.py` 是 ASGI 入口与组装点；`backend/app/api/v1/` 放路由；
   `backend/app/services/` 放账号、Key 生命周期与鉴权、价格与记账、调用协调、
   统计查询、客服规则与模型运行时；`backend/app/schemas/` 放请求与查询契约。
-- 前端 HTML 在 `frontend/src/pages/templetes/`，页面模块在 `pages/`，公共模块在
-  `shared/`，CSS 在 `styles/`。八个 HTML 模板（含根导航）各加载独立 ES Module 入口，
-  `npm run build` 将模板输出到 `frontend/dist/*.html` 并保留 JS 相对导入路径，
-  由本地独立前端 5173 或独立 Nginx 容器提供页面和 /assets；API 只提供 /v1、/health 和接口文档。
-  页面 CSRF 初始化、根导航和角色检查在前端，实际数据权限仍在 API。
+- 前端根 index.html 加载 src/main.ts，Vue Router 管理页面；src/pages 是组件页面，
+  layouts/components/composables/api/styles 按职责组织；shared/lib/format.js 保留纯格式化函数。
+  npm run build 生成 dist/index.html 和 assets 下哈希编译资源，Vite dev 5173 或独立 Nginx 托管。
+  API 只提供 /v1、/health 和接口文档；页面 CSRF、导航和角色检查在前端，实际权限仍在 API。
 - `run-api` 是 zsh/Uvicorn 启动器（注入 `PYTHONPATH=backend`），`run-laya` 是 Laya
   命令行启动器，`customer_service_test.py` 是客服 CLI 入口。
 - 当前 Python 3.12.5、Laya 0.3.23、FastAPI 0.142.2、Uvicorn 0.54.0、Pydantic 2.13.5、
@@ -119,7 +129,7 @@ api/request_body.py 提供有限字节读取；网关 256 KB/解析前和品牌 
 - Git 于 2026-10-02 初始化；`.gitignore` 排除虚拟环境、模型/工具缓存、IDE、字节码、
   日志、本机密钥、`node_modules/` 与 `frontend/dist/`。团队分支策略待确认。
 - 后端 unittest 位于 `backend/tests/{unit,contract,integration,e2e}`，共享辅助在 support；
-  默认发现命令不变。前端另有 Node 内置 unit/contract 测试和可选浏览器隔离回归。
+  默认发现命令不变。前端有 vue-tsc、Vitest、Node、代理集成和可选浏览器隔离回归。
   客服文件名含 test 但运行的是 CLI 推理。
 - 未安装 pytest、ruff、mypy、build，也没有 formatter、Lint、覆盖率配置。
 

@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /build/frontend
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY src ./src
-COPY scripts/build.mjs ./scripts/build.mjs
+COPY index.html vite.config.ts tsconfig.json ./
 RUN npm run build
 
 FROM nginx:stable-alpine AS runtime

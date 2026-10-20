@@ -27,13 +27,15 @@
 - 代码按 [架构设计](20261002-Laya平台-设计.md) 组织：后端在 `backend/app`
   （`api/v1`、`core`、`db`、`schemas`、`services`、`models`、`repositories`），前端在 `frontend/`，
   启动器与客服 CLI 留在根目录。不建空壳层，不提前创建未实现的模块。
-- 前端按 [工程结构设计](20261018-工程结构整理-设计.md) 组织：HTML 仅放
-  `src/pages/templetes/`，页面模块在 `pages/`，公共 HTTP/lib/UI/console 在 `shared/`，
-  分职责 CSS 在 `styles/`。页面可依赖公共模块，公共模块不得反向依赖页面。
-  模块导入不得自动绑定事件或请求；页面显式初始化一次。品牌读取失败不阻断登录。
-  不增加框架/路由/store 空壳；确有重复或独立测试价值才抽取新模块。
-- 构建只发布 HTML、运行时 JS、CSS 和实际静态资源，不发布 tests/scripts/私有配置。
-  模板源码集中不改变 dist 根级 HTML 文件名；watch 必须覆盖嵌套 HTML/JS/CSS。
+- 前端按 [Vue 重做设计](20261020-Vue前端重做-设计.md) 组织：根 index.html 单入口，
+  pages 为 Vue SFC 页面，layouts/components 为复用 UI，api 为带类型的 fetch/CSRF，
+  composables 为会话/品牌逻辑，router 为导航和角色守卫；公共模块不得反向依赖页面。
+  新页面使用 Composition API/script setup；不恢复旧 HTML/DOM 拼接入口，不用 v-html 渲染品牌/错误。
+  保留金额字符串及 UTC 语义，不在客户端重算账务。完整 Key 不持久化，关闭弹窗清理。
+  品牌读取失败不阻断登录；列表加载有失败/空状态，筛选用取消或版本校验避免旧结果覆盖。
+- 构建只发布 index.html、编译后的哈希 JS/CSS 和实际静态资源，不发布源码、tests/scripts/私有配置。
+  Vite dev 仅 loopback，API_ORIGIN 固定受控源；生产保持明确页面路径、API 优先和静态资源 404，
+  禁止把 API 错误回退到 SPA。Docker 构建上下文需包含 index/vite/tsconfig 与 src，不含本机密钥。
 - 用户已确认[彻底分离](20261018-前后端分离-设计.md)：后端不设 web/，不读取 dist、不返回业务页面。
   前端独立静态托管并同源代理 API，不新增宽泛 CORS。首次 CSRF、根路径导航和角色导航在前端；
   所有管理/个人 API 仍必须服务端鉴权，公开页面壳不等于数据公开。
@@ -94,7 +96,7 @@
 - 环境变量由启动脚本与生命周期读取；模型缓存位置参见知识文档。
 - `.venv`、第三方包、缓存和生成 OpenAPI 不是日常编辑目标。
 - 不大范围无关格式化，不保留注释掉的废弃代码。
-- 当前未配置 formatter / Lint / 类型检查（`.venv` 内无 ruff、mypy）；不能新增命令并宣称
+- 后端未配置 formatter / Lint / 类型检查（`.venv` 内无 ruff、mypy）；前端已有 vue-tsc，不能新增命令并宣称
   既有门禁。引入门禁工具前先写明需求与具体执行命令。
 
 ## 测试与验证
@@ -103,8 +105,8 @@
 - 后端测试按 unit/contract/integration/e2e 分类，support 只含测试辅助；测试模块不裸导入
   另一个 test 文件。根路径统一用 `tests.support.paths.ROOT`，不要依赖文件深度。
   默认命令保持递归发现；分类执行使用 `-t backend` 保持包导入一致。
-- 前端 `npm run build` 后执行 `npm test`（Node 内置测试，无新增依赖）；它验证纯逻辑和
-  模块/产物契约，不能替代 `tests/browser/smoke.mjs` 的真实浏览器交互验证。
+- 前端 build 内执行 vue-tsc，npm test 包括 Vitest（Vue 组件/路由/HTTP/竞态）及 Node（格式化/产物/服务边界）；
+  test:server 覆盖静态代理和真实 Vite 代理，不能替代 tests/browser/smoke.mjs 的真实浏览器交互验证。
 - 新功能覆盖正常、非法、边界输入及错误映射，用可复现命令记录验证。鉴权与多租户变更
   必须验证跨用户隔离、撤销即时生效与队列期间失效（拿到锁后重检），不能只测正常路径。
 - Bug 流程：复现 → 失败测试 → 根因 → 最小修复 → 相关验证 → 全量已有回归。
@@ -115,7 +117,7 @@
 - 并发、超时、失败注入按变更范围验证；样本使用合成文本，不持久化客户隐私。
 - 无覆盖率门槛；新增测试工具/依赖前写明需求和具体执行命令。
 - 当前门禁是 `uv pip check`、`zsh -n run-api run-laya`、Python 语法解析、OpenAPI 生成检查
-  与前端 `npm run build`（见 AGENTS）；另有 `PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`；无 Lint、覆盖率与类型检查配置。
+  与前端 `npm run build`（见 AGENTS）；另有 `PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests`；无 Lint、覆盖率和后端类型检查配置。
 - 不存在的全量测试、类型检查及打包应标记“未配置”，不得当成通过。
 
 ## 安全、可靠性与性能

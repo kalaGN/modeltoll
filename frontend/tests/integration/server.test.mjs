@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createFixtureServer } from "../fixtures/server.mjs";
 import { createFrontendServer } from "../../scripts/serve.mjs";
 
@@ -17,7 +18,9 @@ test("real static/proxy servers preserve paths, cookies, CSRF/errors and fail cl
     assert.equal((await fetch(base + "/admin/users")).status, 200);
     assert.equal((await fetch(base + "/unknown")).status, 404);
     assert.equal((await fetch(base + "/assets/%252e%252e/.env")).status, 404);
-    assert.equal((await fetch(base + "/assets/shared/http/client.js")).headers.get("content-type"), "text/javascript; charset=utf-8");
+    const html = await readFile(new URL('../../dist/index.html', import.meta.url), 'utf8');
+    const entry = html.match(/<script[^>]+src="([^"]+)"/)[1];
+    assert.equal((await fetch(base + entry)).headers.get("content-type"), "text/javascript; charset=utf-8");
     const csrf = await fetch(base + "/v1/auth/csrf");
     assert.match(csrf.headers.get("set-cookie"), /laya_csrf=fixture/);
     await csrf.json();

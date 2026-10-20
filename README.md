@@ -4,7 +4,7 @@
 
 模型 API、API Key 管理与 Token 计费平台。支持本地 Laya 和外部兼容模型，提供登录、调用与费用统计、管理员总览、品牌配置及用户管理。
 
-![平台配置界面预览（示例）](docs/platform-settings-preview.jpg)
+![Vue 登录页预览（合成环境）](docs/vue-login-preview.png)
 
 ## 用户请求限流
 
@@ -61,13 +61,17 @@ LAYA_RUNTIME=external zsh run-api
 
 ```bash
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
+npm --prefix frontend run typecheck
 npm --prefix frontend run build
 npm --prefix frontend test
 ```
 
+前端为 Vue 3 + TypeScript + Vite + Tailwind，页面与后端独立部署。
+
 ## 文档
 
 - [后端 ORM 分层与验证](docs/20261019-ORM分层-设计.md)：Model、Repository、Service 和事务边界。
+- [Vue 前端架构与验证](docs/20261020-Vue前端重做-设计.md)
 - [使用指南](docs/使用指南.md)：配置、部署、管理员初始化和 API 示例。
 - [平台需求](docs/20261002-Laya平台-需求.md) · [自部署计划](docs/20261008-自部署平台-任务.md)
 - [开发入口](AGENTS.md) · [项目知识](docs/PROJECT_KNOWLEDGE.md)

@@ -1,5 +1,5 @@
 // Optional real-browser checks. Supply an existing Playwright module; no production dependency.
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
@@ -11,8 +11,18 @@ const { chromium } = await import(modulePath ? pathToFileURL(path.resolve(module
 const artifacts = fileURLToPath(new URL("../../../output/playwright/", import.meta.url));
 const { server, state } = createFixtureServer();
 await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-const frontend = createFrontendServer({ apiOrigin: `http://127.0.0.1:${server.address().port}` });
-await new Promise((resolve, reject) => { frontend.once("error", reject); frontend.listen(0, "127.0.0.1", resolve); });
+let vite;
+let frontend;
+if (process.env.LAYA_BROWSER_VITE === '1') {
+  process.env.API_ORIGIN = `http://127.0.0.1:${server.address().port}`;
+  const { createServer } = await import('vite');
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  vite = await createServer({ root, configFile: path.join(root, 'vite.config.ts'), server: { host: '127.0.0.1', port: 0, strictPort: true } });
+  await vite.listen(); frontend = vite.httpServer;
+} else {
+  frontend = createFrontendServer({ apiOrigin: `http://127.0.0.1:${server.address().port}` });
+  await new Promise((resolve, reject) => { frontend.once("error", reject); frontend.listen(0, "127.0.0.1", resolve); });
+}
 const base = `http://127.0.0.1:${frontend.address().port}`;
 let browser;
 try {
@@ -61,6 +71,7 @@ try {
         assert.equal(await page.locator("#account").textContent(), "fixture@example.invalid");
       }
       await page.screenshot({ path: path.join(artifacts, `${width}-${route.slice(1).replaceAll("/", "-")}.png`), fullPage: true, animations: "disabled" });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `page overflow: ${route} at ${width}`);
     }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -77,7 +88,7 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#secret-modal").isVisible(), true);
   await page.locator("#close").click();
-  assert.equal(await page.locator("#secret").textContent(), "");
+  assert.equal(await page.locator("#secret").count(), 0);
   assert.ok(!(await page.locator("#example").textContent()).includes("SYNTHETIC_KEY_NOT_VALID"));
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.locator("#revoke-confirm").click();
@@ -104,12 +115,22 @@ try {
   await visit("/admin/settings");
   await page.locator("#platform-name").fill("Synthetic brand");
   assert.equal(await page.locator("#preview-name").textContent(), "Synthetic brand");
+  await page.locator('#platform-logo').setInputFiles({ name: 'invalid.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic') });
+  await waitText('#error', '不超过 2 MB');
+  await page.locator('#platform-logo').setInputFiles({ name: 'synthetic.png', mimeType: 'image/png', buffer: await readFile(path.join(artifacts, '1440-login.png')) });
+  await page.locator('#preview-logo').waitFor({ state: 'visible' });
   await action("#save-settings", "/v1/admin/settings", "PUT");
   await waitText("#settings-status", "已保存");
   assert.match(await page.locator("#settings-status").textContent(), /已保存/);
+  assert.ok(state.requests.findLast(request => request.path === '/v1/admin/settings').body.logo_data_url.startsWith('data:image/png;base64,'));
+  await page.locator('#reset-logo').click();
+  await action('#save-settings', '/v1/admin/settings', 'PUT');
+  assert.equal(state.requests.findLast(request => request.path === '/v1/admin/settings').body.logo_data_url, '');
   await action("#test-connection", "/v1/admin/model-connection/test", "POST");
   await waitText("#connection-status", "连接成功");
   assert.match(await page.locator("#connection-status").textContent(), /连接成功/);
+  await action('#save-connection', '/v1/admin/model-connection', 'PUT');
+  await waitText('#connection-status', '已保存');
 
   await visit("/admin/users");
   await action(null, "/v1/admin/users/fixture-member/api-keys", "GET", () => page.getByRole("button", { name: "查看 Key", exact: true }).click());
@@ -120,6 +141,15 @@ try {
   await action("#management-confirm", "/v1/admin/users/fixture-member/status", "PATCH");
   await waitText("#management-feedback", "操作已生效");
   assert.match(await page.locator("#management-feedback").textContent(), /操作已生效/);
+  await page.getByRole('button', { name: '启用用户', exact: true }).click();
+  await page.locator('#management-reason').fill('Synthetic re-enable');
+  await action('#management-confirm', '/v1/admin/users/fixture-member/status', 'PATCH');
+  await waitText('#management-feedback', '操作已生效');
+  await page.getByRole('button', { name: '撤销 Key', exact: true }).click();
+  await page.locator('#management-reason').fill('Synthetic administrator revocation');
+  await action('#management-confirm', '/v1/admin/api-keys/fixture-key/revoke', 'POST');
+  await waitText('#keys-rows', '已撤销');
+  await waitText('#audit-rows', 'Synthetic administrator revocation');
   assert.ok(state.requests.filter(request => ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)).every(request => request.csrf === "fixture"));
 
   for (const route of ["/keys", "/usage", "/billing", "/admin/users"]) {
@@ -151,6 +181,15 @@ try {
   await page.waitForURL(base + "/admin");
   await page.waitForLoadState("networkidle");
   assert.ok(state.requests.some(request => request.path === "/v1/auth/me" && request.sessionPresent));
+  await page.locator('#logout').click();
+  await page.waitForURL(base + '/login');
+  await page.waitForLoadState('networkidle');
+  await visit('/register');
+  await page.locator('#email').fill('new-fixture@example.invalid');
+  await page.locator('#password').fill('synthetic-register-password');
+  await page.locator('#submit').click();
+  await page.waitForURL(base + '/login?registered=1');
+  await page.getByText('注册成功，请使用新账号登录。', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   // Fresh browser cookie jars: static HTML never sets a CSRF cookie itself.
   for (const route of ["/login", "/register"]) {
@@ -186,6 +225,7 @@ try {
   console.log("PASS: 8 routes x 2 viewports, Key lifecycle, filtering/paging, branding/model config, admin action, empty/error states, login and CSRF; synthetic services only.");
 } finally {
   await browser?.close();
-  await new Promise(resolve => frontend.close(resolve));
+  if (vite) await vite.close();
+  else await new Promise(resolve => frontend.close(resolve));
   await new Promise(resolve => server.close(resolve));
 }

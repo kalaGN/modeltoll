@@ -18,13 +18,14 @@
   `schemas/` 不依赖 services/db；`integrations/openai_client.py` 负责上游协议与传输，
   不依赖服务或数据库。`services/platform/branding.py` 管理品牌，`services/platform/admin_overview.py` 管理平台聚合。
 - `backend/migrations/`：可审查 DDL 与回滚，是表结构唯一来源。
-- `frontend/`：独立 Tailwind 前端，`npm run build` 产出 `dist/`；后端不托管页面或 /assets。
-  HTML 源码固定在 `frontend/src/pages/templetes/`（用户指定拼写）；页面入口在 `pages/`，
-  公共模块在 `shared/`，样式在 `styles/`，`input.css` 为唯一 CSS 构建入口。
-  使用原生 ES Modules，每个模板只加载自己的入口，不依赖全局函数或另一个页面入口。
-  构建将模板输出到 `dist/*.html`、模块保留嵌套路径；开发服务器仅监听 5173 loopback，
-  代理到 8000 API；生产由独立 Nginx 镜像托管。保持 pages/templetes 拼写。
-  页面导航与角色守卫在前端，数据权限仍由 API 验证；首次访问通过 /v1/auth/csrf 初始化。
+- `frontend/`：Vue 3 + TypeScript + Vue Router + Vite + Tailwind 独立 SPA。
+  唯一 HTML 入口 frontend/index.html，页面在 src/pages/{auth,console,admin}/*.vue；
+  layouts/components/composables/api/styles 分别负责布局、复用组件、组合逻辑、接口和样式。
+  2026-10-20 用户确认 Vue 重做，替代旧 pages/templetes 与原生页面入口规则，不保留双入口。
+  npm run build 先 vue-tsc 类型检查再输出 dist/index.html + assets/哈希资源；禁止修改 dist。
+  dev 固定 5173 loopback + strictPort，同源代理到 8000；生产独立 Nginx，不回退 API 错误到 HTML。
+  导航/角色守卫归 router，实际数据权限仍由 API 验证；Cookie/CSRF 与完整 Key 安全边界不变。
+  Node 要求见 frontend/package.json engines，测试依赖最低 22.22.2 / 24.15。
 - `backend/tests/{unit,contract,integration,e2e}`：分类回归，`support/` 存共享合成辅助代码；
   默认 unittest 入口仍可发现全部用例，真实 MySQL/容器测试需显式 opt-in。
 - `.python-version` 固定开发解释器系列 3.12；`pyproject.toml` 仅配置 uv pip 默认虚拟环境，
@@ -68,7 +69,7 @@
 - 修改前确认范围，读取相关源码和契约，检查版本控制及工作区状态。
 - 简单任务最小修改；契约、依赖、架构等复杂任务先写 Spec。
 - 修改后执行可用检查，更新相关文档，报告未验证项与风险。
-- 当前有 `backend/tests` unittest 回归和前端构建；未配置 Lint 与类型检查，不得声称这些检查通过。
+- 当前有 backend/tests unittest、前端 vue-tsc/Vitest/Node 测试与构建；后端无类型检查、全项目无 Lint，不得冒称通过。
 
 ## 当前可执行命令
 
@@ -81,7 +82,8 @@ PYTHONPATH=backend .venv/bin/python -c 'import ast,pathlib; [ast.parse(pathlib.P
 PYTHONPATH=backend .venv/bin/python -c 'import app.main as m; print(sorted(m.app.openapi()["paths"].keys()))'
 cd frontend && npm run build && cd ..
 npm --prefix frontend run dev
-node --test frontend/tests/unit/*.test.mjs frontend/tests/contract/*.test.mjs
+npm --prefix frontend run typecheck
+npm --prefix frontend test
 PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests
 zsh run-api
 .venv/bin/python customer_service_test.py --json "请帮我退款"
@@ -94,9 +96,9 @@ curl http://127.0.0.1:8000/health
 提交前执行 `git diff --check` 与 `git diff --cached --check`，并审查暂存文件。
 只有用户明确要求时创建 Commit。
 
-前端开发监视用 `npm --prefix frontend run watch`，同步更新 HTML、嵌套 JS 和 CSS。
+前端 dev 使用 Vite HMR；`npm --prefix frontend run watch` 只监视生产构建。
 dev 和 run-api 是独立长驻进程，分别在两个终端运行；本机页面入口是 5173，不是 8000/login。
 代理集成检查用 `npm --prefix frontend run test:server`（随机本机端口）；可选已有 Nginx 验证用
 `npm --prefix frontend run test:nginx`。两者均只操作合成环境，不启动 Docker 或访问真实账号。
 前端契约测试先构建再执行。浏览器隔离回归与现有 Playwright 运行库的使用见
-[工程结构任务](docs/20261018-工程结构整理-任务.md)，不读取真实账号或调用管理写接口。
+[Vue 重做任务](docs/20261020-Vue前端重做-任务.md)，不读取真实账号或调用管理写接口。

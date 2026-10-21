@@ -26,7 +26,7 @@ class DockerfileContractTests(unittest.TestCase):
         self.assertNotIn('COPY .env', source)
         self.assertIn('COPY backend/migrations', source)
         frontend = (ROOT / 'frontend/Dockerfile').read_text()
-        self.assertIn('FROM node:22-bookworm-slim AS build', frontend)
+        self.assertIn('FROM node:24-bookworm-slim AS build', frontend)
         self.assertIn('RUN npm ci', frontend)
         self.assertIn('RUN npm run build', frontend)
         self.assertIn('FROM nginx:stable-alpine', frontend)

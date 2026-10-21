@@ -84,8 +84,10 @@ def register_user(email: str, password: str) -> User:
     try:
         with session.unit_of_work() as cur:
             repository.create_user(cur, str(uuid.uuid4()), email.strip(), normalized, password_hash)
-    except IntegrityError:
-        raise EmailAlreadyRegistered() from None
+    except IntegrityError as exc:
+        if repository.is_email_conflict(exc):
+            raise EmailAlreadyRegistered() from None
+        raise
     return _fetch_user(normalized)
 
 

@@ -1,9 +1,22 @@
 """Account/session persistence and MySQL atomic login-throttle operations."""
+import re
+
 from sqlalchemy import delete, func, insert, literal_column, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import LoginThrottle, User, UserSession
+
+
+def is_email_conflict(error: IntegrityError) -> bool:
+    """Fail closed on unknown diagnostics; 1062 alone also covers other indexes."""
+    args = getattr(error.orig, 'args', ())
+    return (
+        len(args) == 2 and type(args[0]) is int and args[0] == 1062
+        and isinstance(args[1], str)
+        and re.search(r"for key '(?:users\.)?uk_users_email_normalized'\Z", args[1]) is not None
+    )
 
 
 def login_user(db: Session, email: str) -> dict | None:

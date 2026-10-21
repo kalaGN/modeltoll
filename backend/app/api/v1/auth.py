@@ -6,6 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.api import dependencies
 from app.api.errors import error_content
@@ -59,6 +60,11 @@ def register(
     except accounts.AuthError as exc:
         logger.info("Register rejected code=%s source=%s", exc.code, source)
         return auth_failed(exc)
+    except IntegrityError:
+        # Driver diagnostics may include email values; never log the exception,
+        # SQL statement, parameters or traceback, including through Uvicorn.
+        logger.error("Registration integrity constraint failure", extra={"event": "registration_integrity_failure"})
+        raise HTTPException(status_code=500, detail="注册服务暂不可用") from None
     logger.info("Registered user id=%s", user.id)
     return JSONResponse(status_code=201, content=success(code="created", user=user.public))
 

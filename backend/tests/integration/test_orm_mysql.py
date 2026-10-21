@@ -189,6 +189,23 @@ class OrmMySQLTests(unittest.TestCase):
         with self.assertRaises(accounts.AccountLocked):
             accounts.login(user.email, 'synthetic-password', 'fixture')
 
+    def test_07_registration_distinguishes_email_and_primary_key_duplicates(self):
+        import uuid
+        from sqlalchemy.exc import IntegrityError
+
+        user = self.new_user()
+        with self.assertRaises(accounts.EmailAlreadyRegistered):
+            accounts.register_user(user.email, 'synthetic-password')
+        other_email = uuid.uuid4().hex + '@example.invalid'
+        with patch.object(accounts.uuid, 'uuid4', return_value=user.id):
+            with self.assertRaises(IntegrityError) as caught:
+                accounts.register_user(other_email, 'synthetic-password')
+        self.assertEqual(caught.exception.orig.args[0], 1062)
+        self.assertFalse(accounts.repository.is_email_conflict(caught.exception))
+        # Both failed transactions rolled back; a later registration still works.
+        created = accounts.register_user(other_email, 'synthetic-password')
+        self.assertNotEqual(created.id, user.id)
+
 
 @unittest.skipUnless(os.environ.get('LAYA_TEST_ORM_MYSQL') == '1',
                      'set LAYA_TEST_ORM_MYSQL=1 to start disposable local mysqld instances')
